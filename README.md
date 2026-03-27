@@ -20,6 +20,8 @@ and an official MHR TorchScript-based preprocessing/oracle path.
   official MHR TorchScript bundle export.
 - Golden cases and an offline Python oracle exist under `tests/golden_cases/`
   and `tools/mhr_python_oracle.py`.
+- An initial native reference runtime and parity toolchain exist for offline
+  investigation; they are not yet an exact parity milestone.
 
 ## Layout
 
@@ -33,6 +35,7 @@ and an official MHR TorchScript-based preprocessing/oracle path.
   oracle generation, local config helpers
 - `tests/`: Node-based tooling and contract checks
 - `doc/`: product, architecture, parity, asset, and integration contracts
+- `native/`: native reference runtime core and C ABI for parity work
 
 ## Commands
 
@@ -42,6 +45,10 @@ and an official MHR TorchScript-based preprocessing/oracle path.
 - `npm run test`
 - `npm run preprocess:official`
 - `npm run parity:python`
+- `npm run build:native`
+- `npm run test:native-smoke`
+- `npm run parity:native`
+- `npm run parity:native-stages`
 - `npm run test:official-assets`
 
 If `node` is not on `PATH`, the scripts still resolve it through

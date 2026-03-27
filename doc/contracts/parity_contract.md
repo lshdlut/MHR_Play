@@ -16,6 +16,8 @@ Current implementation note:
   offline tooling environment
 - the oracle artifact layout is already aligned to the future native/wasm parity
   harness
+- the current native reference harness consumes processed bundle arrays only; it
+  does not parse raw official assets directly
 
 ## Golden Cases
 
@@ -60,7 +62,12 @@ the case, the validated outputs, and the threshold that was checked.
 
 ## Current Status
 
-- golden cases and official oracle outputs are frozen
-- processed bundle exports and local oracle layout are ready for native and wasm
-  parity work
-- native and wasm release gates remain future milestones
+- discrete metadata checks are now exercised by the native harness
+- the native reference runtime can load official processed bundles and emit
+  per-case artifacts under `local_tools/mhr_parity/ref_native/`
+- `neutral`, `skin_only`, and `skeleton_only` now reach machine precision
+- the remaining mismatches are localized to two kernels:
+  - trig: `std::sin/cos` vs official `MKL VML`
+  - dense corrective: handwritten loop vs `cblas_sgemv`
+- the current native runtime is parity groundwork, not an exact-parity release
+  gate

@@ -105,8 +105,8 @@ Responsibilities:
 Current state:
 
 - manifest loading, state patch transport, and protocol boundaries are implemented
-- browser-side worker evaluation remains placeholder until a future runtime
-  implementation replaces it
+- browser-side worker evaluation remains placeholder until wasm replaces it
+- native reference work now lives under `native/` and is exercised through offline parity harnesses
 
 ### 5. UI Store
 

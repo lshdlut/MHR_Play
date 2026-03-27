@@ -20,6 +20,8 @@ Anything that would force unstable ownership or protocol churn stays deferred.
 
 Current note:
 
+- an initial native reference runtime and parity harness now exist for offline
+  validation
 - browser runtime ownership and product-facing rendering are still intentionally
   out of scope
 
