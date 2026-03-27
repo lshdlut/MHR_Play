@@ -1,0 +1,10 @@
+{
+  "id": "skin_only",
+  "state": {
+    "surfaceShape": {
+      "blend_00": 1.1,
+      "blend_05": -0.7,
+      "blend_18": 0.4
+    }
+  }
+}

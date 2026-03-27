@@ -1,0 +1,11 @@
+{
+  "id": "skeleton_only",
+  "state": {
+    "skeletalProportion": {
+      "spine_length_flexible": 0.14,
+      "scale_shoulder_width": 0.19,
+      "scale_uplegs": -0.16,
+      "scale_lowarms": 0.12
+    }
+  }
+}

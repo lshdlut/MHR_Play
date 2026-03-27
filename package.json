@@ -3,12 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Play-inspired bootstrap workspace for MHR Play.",
+  "description": "Contract-first MHR Play bootstrap workspace.",
   "license": "UNLICENSED",
   "scripts": {
     "dev": "python tools/dev_server.py --root . --port 8000",
     "generate:protocol": "python tools/run_node.py tools/generate_worker_protocol.mjs",
     "ci:guard": "python tools/run_node.py tools/check_module_boundaries.mjs",
-    "test": "python tools/run_node.py --test tests/tooling/repo_contracts.test.mjs tests/tooling/entry_boundary.test.mjs tests/tooling/runtime_config.test.mjs tests/tooling/asset_bundle_loader.test.mjs"
+    "test": "python tools/run_node.py --test tests/tooling/repo_contracts.test.mjs tests/tooling/entry_boundary.test.mjs tests/tooling/runtime_config.test.mjs tests/tooling/asset_bundle_loader.test.mjs tests/tooling/asset_preprocess.test.mjs",
+    "test:official-assets": "python tools/run_node.py --test tests/tooling/official_reference_smoke.test.mjs",
+    "preprocess:official": "python tools/run_python.py tools/mhr_asset_preprocess.py --source-kind official --out local_tools/official_bundle",
+    "parity:python": "python tools/run_python.py tools/mhr_python_oracle.py --out local_tools/mhr_parity/ref_py"
   }
 }

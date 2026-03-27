@@ -1,0 +1,27 @@
+{
+  "id": "combined",
+  "state": {
+    "root": {
+      "root_tx": 0.8,
+      "root_ry": 0.15
+    },
+    "pose": {
+      "l_uparm_ry": 0.42,
+      "r_uparm_ry": -0.36,
+      "head_bend": 0.12
+    },
+    "surfaceShape": {
+      "blend_02": 0.95,
+      "blend_11": -0.5
+    },
+    "skeletalProportion": {
+      "spine_length_flexible": 0.1,
+      "scale_uplegs": 0.18
+    },
+    "expression": {
+      "expression_00": 0.25,
+      "expression_07": -0.15,
+      "expression_12": 0.2
+    }
+  }
+}

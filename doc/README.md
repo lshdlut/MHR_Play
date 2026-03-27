@@ -10,6 +10,11 @@ This repository keeps the M0-M3 contracts in `doc/contracts/`.
 - `semantic_to_raw_mapping.md`
 - `worker_protocol_draft.md`
 - `host_integration_draft.md`
+- `parity_contract.md`
+- `asset_manifest_contract.md`
+- `asset_bundle_format.md`
+- `distribution_note.md`
+- `attribution_note.md`
 
 ## Top-Level Runtime Charter
 

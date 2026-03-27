@@ -1,0 +1,30 @@
+{
+  "schema": "mhr-golden-cases/v1",
+  "cases": [
+    {
+      "id": "neutral",
+      "path": "cases/neutral.json",
+      "validatedOutputs": ["vertices", "skeleton_state", "derived"]
+    },
+    {
+      "id": "skin_only",
+      "path": "cases/skin_only.json",
+      "validatedOutputs": ["vertices", "skeleton_state", "derived"]
+    },
+    {
+      "id": "skeleton_only",
+      "path": "cases/skeleton_only.json",
+      "validatedOutputs": ["vertices", "skeleton_state", "derived"]
+    },
+    {
+      "id": "pose_only",
+      "path": "cases/pose_only.json",
+      "validatedOutputs": ["vertices", "skeleton_state", "derived"]
+    },
+    {
+      "id": "combined",
+      "path": "cases/combined.json",
+      "validatedOutputs": ["vertices", "skeleton_state", "derived"]
+    }
+  ]
+}

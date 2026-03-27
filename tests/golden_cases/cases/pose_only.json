@@ -1,0 +1,15 @@
+{
+  "id": "pose_only",
+  "state": {
+    "root": {
+      "root_ry": 0.2
+    },
+    "pose": {
+      "l_uparm_ry": 0.55,
+      "r_uparm_ry": -0.45,
+      "l_lowarm_twist": -0.35,
+      "r_lowarm_twist": -0.2,
+      "head_bend": 0.18
+    }
+  }
+}

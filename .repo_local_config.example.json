@@ -1,0 +1,5 @@
+{
+  "python_exe": "C:/Users/<user>/miniforge3/envs/myconda/python.exe",
+  "mhr_ref_root": "C:/path/to/official/MHR",
+  "mhr_asset_root": "C:/path/to/official/MHR/assets"
+}

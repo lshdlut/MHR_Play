@@ -52,12 +52,17 @@ test('public modules expose expected surfaces', async () => {
 test('contract documents are present', () => {
   const requiredDocs = [
     'ARCHITECTURE.md',
+    '.repo_local_config.example.json',
     'doc/contracts/out_of_scope.md',
     'doc/contracts/state_schema.md',
     'doc/contracts/panel_schema.md',
     'doc/contracts/semantic_to_raw_mapping.md',
     'doc/contracts/worker_protocol_draft.md',
     'doc/contracts/host_integration_draft.md',
+    'doc/contracts/parity_contract.md',
+    'doc/contracts/asset_manifest_contract.md',
+    'doc/contracts/asset_bundle_format.md',
+    'tests/golden_cases/manifest.json',
   ];
   for (const docPath of requiredDocs) {
     assert.ok(existsSync(path.join(repoRoot, docPath)), `missing ${docPath}`);
