@@ -1,0 +1,13 @@
+AGENTS.md
+.agents_arena/
+.repo_local_config.json
+__pycache__/
+*.pyc
+*.obj
+*.lib
+*.exp
+node_modules/
+dist/
+local_tools/
+release_assets/
+tmp/

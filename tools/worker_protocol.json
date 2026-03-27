@@ -1,0 +1,83 @@
+{
+  "commands": [
+    {
+      "name": "init",
+      "category": "lifecycle",
+      "optional": ["runtimeConfig"]
+    },
+    {
+      "name": "loadAssets",
+      "category": "asset_loading",
+      "required": ["assetConfig"]
+    },
+    {
+      "name": "setState",
+      "category": "state_update",
+      "required": ["statePatch"]
+    },
+    {
+      "name": "evaluate",
+      "category": "evaluation",
+      "optional": ["compareMode"]
+    },
+    {
+      "name": "applyPreset",
+      "category": "presets",
+      "required": ["presetId"]
+    },
+    {
+      "name": "runSweep",
+      "category": "presets",
+      "required": ["sweepId"]
+    },
+    {
+      "name": "dispose",
+      "category": "lifecycle"
+    }
+  ],
+  "events": [
+    {
+      "name": "ready",
+      "category": "lifecycle",
+      "optional": ["contractVersion", "capabilities"]
+    },
+    {
+      "name": "assetsLoaded",
+      "category": "asset_loading",
+      "required": ["bundleId"],
+      "optional": ["manifestUrl", "assetBaseUrl", "parameterCount"]
+    },
+    {
+      "name": "stateUpdated",
+      "category": "state_update",
+      "required": ["revision", "state"]
+    },
+    {
+      "name": "evaluation",
+      "category": "evaluation",
+      "required": ["evaluation"]
+    },
+    {
+      "name": "presetApplied",
+      "category": "presets",
+      "required": ["presetId"],
+      "optional": ["revision"]
+    },
+    {
+      "name": "sweepProgress",
+      "category": "presets",
+      "required": ["sweepId", "phase"],
+      "optional": ["revision"]
+    },
+    {
+      "name": "diagnostic",
+      "category": "diagnostics",
+      "required": ["level", "message"]
+    },
+    {
+      "name": "error",
+      "category": "diagnostics",
+      "required": ["code", "message"]
+    }
+  ]
+}

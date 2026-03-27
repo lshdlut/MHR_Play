@@ -1,0 +1,14 @@
+{
+  "name": "mhr-play",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Play-inspired bootstrap workspace for MHR Play.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "python tools/dev_server.py --root . --port 8000",
+    "generate:protocol": "python tools/run_node.py tools/generate_worker_protocol.mjs",
+    "ci:guard": "python tools/run_node.py tools/check_module_boundaries.mjs",
+    "test": "python tools/run_node.py --test tests/tooling/repo_contracts.test.mjs tests/tooling/entry_boundary.test.mjs tests/tooling/runtime_config.test.mjs tests/tooling/asset_bundle_loader.test.mjs"
+  }
+}
