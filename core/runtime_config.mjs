@@ -55,11 +55,26 @@ export function normalizeRuntimeConfig(input = {}) {
   });
 }
 
-export function normalizeAssetConfig(input = {}) {
-  const manifestUrl =
-    typeof input?.manifestUrl === 'string' ? input.manifestUrl.trim() : '';
-  const assetBaseUrl =
-    typeof input?.assetBaseUrl === 'string' ? input.assetBaseUrl.trim() : '';
+function absolutizeUrl(rawValue, fallbackBaseUrl = '') {
+  if (typeof rawValue !== 'string' || !rawValue.trim()) {
+    return '';
+  }
+  const value = rawValue.trim();
+  if (!fallbackBaseUrl) {
+    return value;
+  }
+  try {
+    return new URL(value, fallbackBaseUrl).href;
+  } catch {
+    return value;
+  }
+}
+
+export function normalizeAssetConfig(input = {}, target = globalThis) {
+  const fallbackBaseUrl =
+    typeof target?.location?.href === 'string' ? target.location.href : '';
+  const manifestUrl = absolutizeUrl(input?.manifestUrl, fallbackBaseUrl);
+  const assetBaseUrl = absolutizeUrl(input?.assetBaseUrl, fallbackBaseUrl);
 
   return freezeIfObject({
     manifestUrl,
@@ -91,11 +106,11 @@ export function resolveMountConfig({
     : bootstrapRuntimeConfig;
   const standaloneShell = !hasExplicitRuntime && !hasExplicitAsset && !!baseRuntimeConfig.startup.standaloneShell;
   const assetConfig = hasExplicitAsset
-    ? normalizeAssetConfig(explicitAssetConfig)
+    ? normalizeAssetConfig(explicitAssetConfig, target)
     : standaloneShell
       ? normalizeAssetConfig({
           manifestUrl: baseRuntimeConfig.startup.assetManifestUrl,
-        })
+        }, target)
       : DEFAULT_ASSET_CONFIG;
   const hostMode = hasExplicitRuntime || hasExplicitAsset ? 'embed' : baseRuntimeConfig.host.mode;
 

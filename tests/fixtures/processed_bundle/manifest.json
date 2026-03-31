@@ -1,35 +1,219 @@
 {
   "bundleSchema": "mhr-processed-bundle/v1",
   "schemaVersion": 1,
+  "bundleProfile": "fixture",
   "bundleId": "minimal-human-fixture",
   "sourceId": "minimal-human-source",
-  "modelVersion": "0.0.1",
-  "bundleFingerprint": "sha256:720337fdc769a46c44513a11ba308b79ed68952e804fae80d502b99ae7ac0fc2",
+  "modelVersion": "0.1.0",
+  "bundleFingerprint": "sha256:b1aec9e1d882f23efe6ad8cd8aa8eb277f0554b5cfe17a4481168344afe44740",
   "parameterMetadata": {
+    "counts": {
+      "modelParameterCount": 12,
+      "identityCount": 45,
+      "expressionCount": 1,
+      "vertexCount": 15,
+      "faceCount": 13,
+      "jointCount": 3,
+      "maxInfluenceCount": 2
+    },
+    "topology": {
+      "vertexCount": 15,
+      "faceCount": 13
+    },
+    "sections": {
+      "root": {
+        "translateX": 0,
+        "translateY": 1,
+        "translateZ": 2
+      },
+      "pose": {
+        "rootPitch": 3,
+        "rootYaw": 4,
+        "rootRoll": 5,
+        "spinePitch": 6,
+        "spineYaw": 7,
+        "spineRoll": 8,
+        "headPitch": 9,
+        "headYaw": 10,
+        "headRoll": 11
+      },
+      "skeletalProportion": {},
+      "surfaceShape": {
+        "identityWidth": 0,
+        "identityHeight": 1
+      },
+      "expression": {
+        "smile": 0
+      }
+    },
     "groups": [
       {
-        "id": "identity",
-        "label": "Identity"
+        "id": "root",
+        "label": "Root"
       },
       {
         "id": "pose",
         "label": "Pose"
+      },
+      {
+        "id": "surface",
+        "label": "Surface Shape"
+      },
+      {
+        "id": "expression",
+        "label": "Expression"
       }
     ],
     "parameters": [
       {
-        "key": "surfaceShape.identity.width",
-        "group": "identity",
+        "key": "translateX",
+        "label": "Translate X",
+        "group": "root",
+        "stateSection": "root",
+        "tier": "curated",
         "default": 0.0,
         "min": -1.0,
         "max": 1.0
       },
       {
-        "key": "pose.shoulder_flexion",
-        "group": "pose",
+        "key": "translateY",
+        "label": "Translate Y",
+        "group": "root",
+        "stateSection": "root",
+        "tier": "curated",
         "default": 0.0,
-        "min": -45.0,
-        "max": 45.0
+        "min": -1.0,
+        "max": 1.0
+      },
+      {
+        "key": "translateZ",
+        "label": "Translate Z",
+        "group": "root",
+        "stateSection": "root",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -1.0,
+        "max": 1.0
+      },
+      {
+        "key": "rootPitch",
+        "label": "Root Pitch",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "rootYaw",
+        "label": "Root Yaw",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "rootRoll",
+        "label": "Root Roll",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "spinePitch",
+        "label": "Spine Pitch",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "spineYaw",
+        "label": "Spine Yaw",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "spineRoll",
+        "label": "Spine Roll",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "headPitch",
+        "label": "Head Pitch",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "headYaw",
+        "label": "Head Yaw",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "headRoll",
+        "label": "Head Roll",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "identityWidth",
+        "label": "Identity Width",
+        "group": "surface",
+        "stateSection": "surfaceShape",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -1.0,
+        "max": 1.0
+      },
+      {
+        "key": "identityHeight",
+        "label": "Identity Height",
+        "group": "surface",
+        "stateSection": "surfaceShape",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -1.0,
+        "max": 1.0
+      },
+      {
+        "key": "smile",
+        "label": "Smile",
+        "group": "expression",
+        "stateSection": "expression",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -1.0,
+        "max": 1.0
       }
     ]
   },
@@ -39,84 +223,188 @@
       "file": "meshTopology.bin",
       "dtype": "uint32",
       "shape": [
-        1,
+        13,
         3
       ],
-      "count": 3,
-      "byteLength": 12,
-      "sha256": "sha256:ad5dc1478de06a4c2728ea528bd9361a4b945e92a414bf4d180cedaaeaa5f4cc"
+      "count": 39,
+      "byteLength": 156,
+      "sha256": "sha256:850f1b42f19b62f454cfa1401d202fb185c2c0ca5ae49133478de55b9337e6ba"
     },
     {
       "key": "skinningWeights",
       "file": "skinningWeights.bin",
       "dtype": "float32",
       "shape": [
-        2,
+        15,
         2
       ],
-      "count": 4,
-      "byteLength": 16,
-      "sha256": "sha256:5ccbc0143997cbab553b5888d6a948410ccbee8eaaa7161ae587d8c94ea2e8e4"
+      "count": 30,
+      "byteLength": 120,
+      "sha256": "sha256:5c620e073166b81ad110f6d3bef9aef4ee7600823b257e11944f06d7d7f1ca6c"
+    },
+    {
+      "key": "skinningIndices",
+      "file": "skinningIndices.bin",
+      "dtype": "uint32",
+      "shape": [
+        15,
+        2
+      ],
+      "count": 30,
+      "byteLength": 120,
+      "sha256": "sha256:085bdd16758b303c511bdb927e6c92d989e1a43caa96e3a7300787e1f63a4b4c"
     },
     {
       "key": "bindMatrices",
       "file": "bindMatrices.bin",
       "dtype": "float32",
       "shape": [
-        1,
-        16
+        3,
+        8
       ],
-      "count": 16,
-      "byteLength": 64,
-      "sha256": "sha256:5998e9d1dd9bf48af6af87a1ef8c7783b818ac8329637ada08cc5fb329042376"
+      "count": 24,
+      "byteLength": 96,
+      "sha256": "sha256:b2d91bef8866aab206eba6a5e746467c998ed5159d1a2bdc09bea5d0b1c6eb02"
     },
     {
       "key": "inverseBindMatrices",
       "file": "inverseBindMatrices.bin",
       "dtype": "float32",
       "shape": [
-        1,
-        16
+        3,
+        8
       ],
-      "count": 16,
-      "byteLength": 64,
-      "sha256": "sha256:5998e9d1dd9bf48af6af87a1ef8c7783b818ac8329637ada08cc5fb329042376"
+      "count": 24,
+      "byteLength": 96,
+      "sha256": "sha256:45704fd9ef9950c10b292c7c8f605580d9f2dbf3889f9ffa428f83a7038629bd"
     },
     {
       "key": "rigTransforms",
       "file": "rigTransforms.bin",
       "dtype": "float32",
       "shape": [
-        1,
-        16
+        3,
+        7
       ],
-      "count": 16,
-      "byteLength": 64,
-      "sha256": "sha256:738e31f4c1b673313bb4704959864cffb4021448098adc29d3fe7760393d1c49"
+      "count": 21,
+      "byteLength": 84,
+      "sha256": "sha256:180942ed10d07e9352c0c2281fc6dc2ad9f85a99999bab60092848de5f92c2a2"
+    },
+    {
+      "key": "jointParents",
+      "file": "jointParents.bin",
+      "dtype": "int32",
+      "shape": [
+        3
+      ],
+      "count": 3,
+      "byteLength": 12,
+      "sha256": "sha256:50681db447d25f550871a9c39ccbf86ea91152fabd48a30c92acf21748c75955"
+    },
+    {
+      "key": "parameterTransform",
+      "file": "parameterTransform.bin",
+      "dtype": "float32",
+      "shape": [
+        21,
+        57
+      ],
+      "count": 1197,
+      "byteLength": 4788,
+      "sha256": "sha256:b94ffd4a569666996f99fb532fa7fbd89fb0771820a9cc57b107b2cbff754186"
+    },
+    {
+      "key": "parameterLimits",
+      "file": "parameterLimits.bin",
+      "dtype": "float32",
+      "shape": [
+        57,
+        2
+      ],
+      "count": 114,
+      "byteLength": 456,
+      "sha256": "sha256:f14f430386f2856705aae7f522db6cdc66d51f10b0ede32251b51a378f647d64"
+    },
+    {
+      "key": "parameterMaskPose",
+      "file": "parameterMaskPose.bin",
+      "dtype": "uint8",
+      "shape": [
+        57
+      ],
+      "count": 57,
+      "byteLength": 57,
+      "sha256": "sha256:c83d1475181fd16ea7897e98d5901dc0399d216ec8d1b96c0af6493ccff34c35"
+    },
+    {
+      "key": "parameterMaskRigid",
+      "file": "parameterMaskRigid.bin",
+      "dtype": "uint8",
+      "shape": [
+        57
+      ],
+      "count": 57,
+      "byteLength": 57,
+      "sha256": "sha256:569d7233477bad80b97d4c9a6a862206af903e66bc1e5e8029e0761b22d66f6d"
+    },
+    {
+      "key": "parameterMaskScaling",
+      "file": "parameterMaskScaling.bin",
+      "dtype": "uint8",
+      "shape": [
+        57
+      ],
+      "count": 57,
+      "byteLength": 57,
+      "sha256": "sha256:65a16cb7861335d5ace3c60718b5052e44660726da4cd13bb745381b235a1785"
     },
     {
       "key": "blendshapeData",
       "file": "blendshapeData.bin",
       "dtype": "float32",
       "shape": [
-        1,
+        47,
+        15,
         3
       ],
-      "count": 3,
-      "byteLength": 12,
-      "sha256": "sha256:15ec7bf0b50732b49f8228e07d24365338f9e3ab994b00af08e5a3bffe55fd8b"
+      "count": 2115,
+      "byteLength": 8460,
+      "sha256": "sha256:6bd5cab5cf50d19e833bc61d3400fb1ffd57542b6e5f0563ee5da357d938d215"
     },
     {
       "key": "correctiveData",
       "file": "correctiveData.bin",
       "dtype": "float32",
       "shape": [
-        1,
-        4
+        45,
+        1
       ],
-      "count": 4,
+      "count": 45,
+      "byteLength": 180,
+      "sha256": "sha256:10b2a66888c58a54b277fe2e68fb6e87150c3cd2c537b7f6a2d84559017438c7"
+    },
+    {
+      "key": "correctiveSparseIndices",
+      "file": "correctiveSparseIndices.bin",
+      "dtype": "int64",
+      "shape": [
+        2,
+        1
+      ],
+      "count": 2,
       "byteLength": 16,
-      "sha256": "sha256:958be38e5b5bdd8fa2cb4efd7df7fcbbed8ff20f30fd6821eacc966137e6ccde"
+      "sha256": "sha256:374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb"
+    },
+    {
+      "key": "correctiveSparseWeights",
+      "file": "correctiveSparseWeights.bin",
+      "dtype": "float32",
+      "shape": [
+        1
+      ],
+      "count": 1,
+      "byteLength": 4,
+      "sha256": "sha256:df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119"
     }
   ]
 }

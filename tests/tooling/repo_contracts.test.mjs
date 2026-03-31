@@ -47,6 +47,10 @@ test('public modules expose expected surfaces', async () => {
   assert.equal(typeof bundleModule.validateProcessedBundleManifest, 'function');
   assert.equal(typeof bundleModule.loadProcessedBundleManifest, 'function');
   assert.equal(typeof bundleModule.validateProcessedBundleChunks, 'function');
+  assert.equal(typeof bundleModule.validateRuntimeIrManifest, 'function');
+  assert.equal(typeof bundleModule.loadRuntimeIrManifest, 'function');
+  assert.equal(typeof bundleModule.validateRuntimeIrChunks, 'function');
+  assert.equal(typeof bundleModule.loadRuntimeIrChunks, 'function');
 });
 
 test('contract documents are present', () => {
@@ -62,9 +66,18 @@ test('contract documents are present', () => {
     'doc/contracts/parity_contract.md',
     'doc/contracts/asset_manifest_contract.md',
     'doc/contracts/asset_bundle_format.md',
+    'doc/beta_release_checklist.md',
     'tests/golden_cases/manifest.json',
   ];
   for (const docPath of requiredDocs) {
     assert.ok(existsSync(path.join(repoRoot, docPath)), `missing ${docPath}`);
   }
+});
+
+test('worker default runtime path is IR-backed', () => {
+  const workerSource = readFileSync(path.join(repoRoot, 'worker', 'mhr.worker.mjs'), 'utf8');
+  assert.equal(workerSource.includes('loadRuntimeIrManifest'), true);
+  assert.equal(workerSource.includes('loadRuntimeIrChunks'), true);
+  assert.equal(workerSource.includes('loadProcessedBundleManifest'), false);
+  assert.equal(workerSource.includes('loadProcessedBundleChunks'), false);
 });

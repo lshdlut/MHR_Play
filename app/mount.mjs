@@ -56,6 +56,7 @@ export async function mountMhrPlay(options = {}) {
 
   if (assetConfig.manifestUrl) {
     await backend.loadAssets(assetConfig);
+    await backend.evaluate({ compareMode: store.get().view.compareMode });
   }
 
   const onResize = () => renderer.resize();

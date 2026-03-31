@@ -21,6 +21,9 @@ const DEFAULT_SNAPSHOT = Object.freeze({
 });
 
 function cloneSnapshot(snapshot) {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(snapshot);
+  }
   return JSON.parse(JSON.stringify(snapshot));
 }
 
@@ -41,8 +44,9 @@ function mergeMhrState(currentState, patch) {
 export async function createBackend({ runtimeConfig, assetConfig = null } = {}) {
   const listeners = new Set();
   let client = null;
-  let currentAssetConfig = normalizeAssetConfig(assetConfig || {});
+  let currentAssetConfig = normalizeAssetConfig(assetConfig || {}, globalThis);
   let lastSnapshot = cloneSnapshot(DEFAULT_SNAPSHOT);
+  const pendingByEvent = new Map();
 
   function snapshot() {
     return cloneSnapshot(lastSnapshot);
@@ -62,6 +66,44 @@ export async function createBackend({ runtimeConfig, assetConfig = null } = {}) 
     return lastSnapshot;
   }
 
+  function enqueuePending(eventName) {
+    return new Promise((resolve, reject) => {
+      const queue = pendingByEvent.get(eventName) || [];
+      queue.push({ resolve, reject });
+      pendingByEvent.set(eventName, queue);
+    });
+  }
+
+  function resolvePending(eventName, payload) {
+    const queue = pendingByEvent.get(eventName);
+    if (!queue?.length) {
+      return;
+    }
+    const next = queue.shift();
+    if (!queue.length) {
+      pendingByEvent.delete(eventName);
+    }
+    next?.resolve?.(payload);
+  }
+
+  function rejectPending(eventName, error) {
+    const queue = pendingByEvent.get(eventName);
+    if (!queue?.length) {
+      return;
+    }
+    pendingByEvent.delete(eventName);
+    for (const entry of queue) {
+      entry.reject(error);
+    }
+  }
+
+  function rejectAllPending(payload) {
+    const error = new Error(payload?.message || 'Worker command failed.');
+    for (const eventName of [...pendingByEvent.keys()]) {
+      rejectPending(eventName, error);
+    }
+  }
+
   const workerHandlers = {
     ready(payload) {
       applyMutation((draft) => {
@@ -78,8 +120,13 @@ export async function createBackend({ runtimeConfig, assetConfig = null } = {}) 
           manifestUrl: payload.manifestUrl || '',
           assetBaseUrl: payload.assetBaseUrl || '',
           parameterCount: payload.parameterCount || 0,
+          counts: payload.counts || null,
+          topology: payload.topology || null,
+          jointParents: payload.jointParents || null,
+          parameterMetadata: payload.parameterMetadata || null,
         };
       });
+      resolvePending('assetsLoaded', snapshot());
     },
     stateUpdated(payload) {
       applyMutation((draft) => {
@@ -87,22 +134,26 @@ export async function createBackend({ runtimeConfig, assetConfig = null } = {}) 
         draft.state = mergeMhrState(draft.state, payload.state || {});
         draft.revision = payload.revision || draft.revision;
       });
+      resolvePending('stateUpdated', snapshot());
     },
     evaluation(payload) {
       applyMutation((draft) => {
         draft.status = 'evaluated';
         draft.evaluation = payload.evaluation || null;
       });
+      resolvePending('evaluation', snapshot());
     },
     presetApplied(payload) {
       applyMutation((draft) => {
         draft.status = `preset:${payload.presetId || 'unknown'}`;
       });
+      resolvePending('presetApplied', snapshot());
     },
     sweepProgress(payload) {
       applyMutation((draft) => {
         draft.status = `sweep:${payload.phase || 'running'}`;
       });
+      resolvePending('sweepProgress', snapshot());
     },
     diagnostic(payload) {
       applyMutation((draft) => {
@@ -114,6 +165,7 @@ export async function createBackend({ runtimeConfig, assetConfig = null } = {}) 
         draft.status = 'error';
         draft.diagnostics = [...(draft.diagnostics || []), payload];
       });
+      rejectAllPending(payload);
     },
   };
 
@@ -153,37 +205,42 @@ export async function createBackend({ runtimeConfig, assetConfig = null } = {}) 
   }
 
   async function loadAssets(assetConfig = {}) {
-    const payload = normalizeAssetConfig(assetConfig || currentAssetConfig);
+    const payload = normalizeAssetConfig(assetConfig || currentAssetConfig, globalThis);
     if (!payload.manifestUrl) {
       throw new Error('loadAssets requires assetConfig.manifestUrl.');
     }
     currentAssetConfig = payload;
+    const pending = enqueuePending('assetsLoaded');
     ensureWorker().postMessage(
       encodeCommand('loadAssets', {
         assetConfig: payload,
       }),
     );
-    return snapshot();
+    return pending;
   }
 
   async function setState(statePatch = {}) {
+    const pending = enqueuePending('stateUpdated');
     ensureWorker().postMessage(encodeCommand('setState', { statePatch }));
-    return snapshot();
+    return pending;
   }
 
   async function evaluate(options = {}) {
+    const pending = enqueuePending('evaluation');
     ensureWorker().postMessage(encodeCommand('evaluate', options));
-    return snapshot();
+    return pending;
   }
 
   async function applyPreset(presetId) {
+    const pending = enqueuePending('presetApplied');
     ensureWorker().postMessage(encodeCommand('applyPreset', { presetId: String(presetId || '') }));
-    return snapshot();
+    return pending;
   }
 
   async function runSweep(sweepId) {
+    const pending = enqueuePending('sweepProgress');
     ensureWorker().postMessage(encodeCommand('runSweep', { sweepId: String(sweepId || '') }));
-    return snapshot();
+    return pending;
   }
 
   function dispose() {

@@ -31,7 +31,7 @@ Excluded from runtime scope for this slice:
 - `tools/`
 - `doc/`
 - any future plugin or environment system
-- production-ready wasm runtime details beyond the current placeholder worker
+- raw official asset parsing in the browser runtime
 
 ## System Layers
 
@@ -104,9 +104,11 @@ Responsibilities:
 
 Current state:
 
-- manifest loading, state patch transport, and protocol boundaries are implemented
-- browser-side worker evaluation remains placeholder until wasm replaces it
-- native reference work now lives under `native/` and is exercised through offline parity harnesses
+- the worker owns the shipped browser-side wasm runtime
+- processed bundle loading, semantic state transport, evaluation, and result
+  readback all occur inside `worker/mhr.worker.mjs`
+- native reference work lives under `native/` and includes a reference-only
+  exact-kernel path for oracle parity
 
 ### 5. UI Store
 
@@ -156,6 +158,12 @@ The mounted host surface is formal and versioned. The current minimum API is:
 Embedding is allowed to depend on this surface, not on ad hoc globals or
 internal module imports.
 
+## Public Beta Surfaces
+
+- `index.html`: standalone public beta shell that auto-loads the tracked demo bundle
+- `embed.html`: explicit host-mount demo that exercises the stable embed contract
+- `dist/public_beta/`: export target for local release checks and GitHub Pages style deployment
+
 ## Architectural Invariants
 
 - Bootstrap is the only primary runtime input collector.
@@ -165,3 +173,4 @@ internal module imports.
 - UI state stays UI-only.
 - Worker protocol is formal and generated.
 - The repository stays `play`-inspired in shape, but `MHR`-specific in meaning.
+- The shipped browser runtime consumes processed bundles only.

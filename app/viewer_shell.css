@@ -202,6 +202,43 @@ body {
   word-break: break-word;
 }
 
+.mhr-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.mhr-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(47, 36, 23, 0.14);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--mhr-ink);
+  border-radius: 14px;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.mhr-parameter-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.mhr-slider {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.mhr-slider__name,
+.mhr-slider__value {
+  font-size: 0.9rem;
+  color: var(--mhr-muted);
+}
+
+.mhr-slider__value {
+  font-family: "IBM Plex Mono", "Consolas", monospace;
+}
+
 @media (max-width: 1080px) {
   .mhr-shell {
     padding: 16px;

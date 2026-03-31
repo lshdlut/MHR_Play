@@ -1,10 +1,9 @@
 # MHR Play
 
 `MHR Play` is an embeddable `front-end + worker` application for MHR-focused
-runtime exploration. The repository now covers the bootstrap slice plus the
-first real-asset offline lane: a Play-inspired architecture skeleton, frozen
-runtime contracts, generated worker protocol glue, a processed bundle loader,
-and an official MHR TorchScript-based preprocessing/oracle path.
+runtime exploration. The repository now includes a public-beta-ready standalone
+shell, a stable embed surface, a processed demo bundle, a wasm worker runtime,
+and an official TorchScript/native reference lane for parity work.
 
 ## Current Status
 
@@ -20,19 +19,23 @@ and an official MHR TorchScript-based preprocessing/oracle path.
   official MHR TorchScript bundle export.
 - Golden cases and an offline Python oracle exist under `tests/golden_cases/`
   and `tools/mhr_python_oracle.py`.
-- An initial native reference runtime and parity toolchain exist for offline
-  investigation; they are not yet an exact parity milestone.
+- The native reference runtime now reaches machine precision on the frozen
+  golden cases through a reference-only exact-kernel path.
+- The standalone shell auto-loads the tracked demo bundle and evaluates it
+  through the worker-owned wasm runtime.
+- `index.html` and `embed.html` are the two public beta surfaces:
+  standalone GitHub Pages style delivery and explicit host embedding.
 
 ## Layout
 
 - `app/`: bootstrap, shell, public mount surface, host contract
 - `backend/`: main-thread worker proxy and latest evaluation owner
 - `core/`: runtime config, logging helpers, bundle validation
-- `renderer/`: placeholder scene pipeline and viewport ownership
-- `ui/`: UI-only store and coarse control surface
-- `worker/`: generated protocol glue and worker runtime owner
+- `renderer/`: minimal beta viewer for skin and skeleton consumption
+- `ui/`: UI-only store and beta control surface
+- `worker/`: generated protocol glue and wasm runtime owner
 - `tools/`: dev server, protocol generator, boundary checker, preprocessing,
-  oracle generation, local config helpers
+  oracle generation, demo-bundle/export/release helpers
 - `tests/`: Node-based tooling and contract checks
 - `doc/`: product, architecture, parity, asset, and integration contracts
 - `native/`: native reference runtime core and C ABI for parity work
@@ -46,10 +49,16 @@ and an official MHR TorchScript-based preprocessing/oracle path.
 - `npm run preprocess:official`
 - `npm run parity:python`
 - `npm run build:native`
+- `npm run build:demo-bundle`
+- `npm run build:wasm`
+- `npm run build:beta`
+- `npm run export:beta`
 - `npm run test:native-smoke`
+- `npm run test:browser-smoke`
 - `npm run parity:native`
 - `npm run parity:native-stages`
 - `npm run test:official-assets`
+- `npm run release:check`
 
 If `node` is not on `PATH`, the scripts still resolve it through
 `tools/run_node.py` using either `NODE_EXE` or the default Windows install

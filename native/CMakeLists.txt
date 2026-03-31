@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(mhr_native SHARED
+  src/mhr_model_data_api.cpp
   src/mhr_native_api.cpp
   src/mhr_runtime.cpp
 )

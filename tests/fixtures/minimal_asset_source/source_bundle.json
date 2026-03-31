@@ -1,68 +1,457 @@
 {
   "bundleId": "minimal-human-fixture",
   "sourceId": "minimal-human-source",
-  "modelVersion": "0.0.1",
+  "modelVersion": "0.1.0",
   "parameterMetadata": {
+    "counts": {
+      "modelParameterCount": 12,
+      "identityCount": 45,
+      "expressionCount": 1,
+      "vertexCount": 15,
+      "faceCount": 13,
+      "jointCount": 3,
+      "maxInfluenceCount": 2
+    },
+    "topology": {
+      "vertexCount": 15,
+      "faceCount": 13
+    },
+    "sections": {
+      "root": {
+        "translateX": 0,
+        "translateY": 1,
+        "translateZ": 2
+      },
+      "pose": {
+        "rootPitch": 3,
+        "rootYaw": 4,
+        "rootRoll": 5,
+        "spinePitch": 6,
+        "spineYaw": 7,
+        "spineRoll": 8,
+        "headPitch": 9,
+        "headYaw": 10,
+        "headRoll": 11
+      },
+      "skeletalProportion": {},
+      "surfaceShape": {
+        "identityWidth": 0,
+        "identityHeight": 1
+      },
+      "expression": {
+        "smile": 0
+      }
+    },
     "groups": [
       {
-        "id": "identity",
-        "label": "Identity"
+        "id": "root",
+        "label": "Root"
       },
       {
         "id": "pose",
         "label": "Pose"
+      },
+      {
+        "id": "surface",
+        "label": "Surface Shape"
+      },
+      {
+        "id": "expression",
+        "label": "Expression"
       }
     ],
     "parameters": [
       {
-        "key": "surfaceShape.identity.width",
-        "group": "identity",
+        "key": "translateX",
+        "label": "Translate X",
+        "group": "root",
+        "stateSection": "root",
+        "tier": "curated",
         "default": 0.0,
         "min": -1.0,
         "max": 1.0
       },
       {
-        "key": "pose.shoulder_flexion",
-        "group": "pose",
+        "key": "translateY",
+        "label": "Translate Y",
+        "group": "root",
+        "stateSection": "root",
+        "tier": "curated",
         "default": 0.0,
-        "min": -45.0,
-        "max": 45.0
+        "min": -1.0,
+        "max": 1.0
+      },
+      {
+        "key": "translateZ",
+        "label": "Translate Z",
+        "group": "root",
+        "stateSection": "root",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -1.0,
+        "max": 1.0
+      },
+      {
+        "key": "rootPitch",
+        "label": "Root Pitch",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "rootYaw",
+        "label": "Root Yaw",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "rootRoll",
+        "label": "Root Roll",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "spinePitch",
+        "label": "Spine Pitch",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "spineYaw",
+        "label": "Spine Yaw",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "spineRoll",
+        "label": "Spine Roll",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "headPitch",
+        "label": "Head Pitch",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "headYaw",
+        "label": "Head Yaw",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "headRoll",
+        "label": "Head Roll",
+        "group": "pose",
+        "stateSection": "pose",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -0.9,
+        "max": 0.9
+      },
+      {
+        "key": "identityWidth",
+        "label": "Identity Width",
+        "group": "surface",
+        "stateSection": "surfaceShape",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -1.0,
+        "max": 1.0
+      },
+      {
+        "key": "identityHeight",
+        "label": "Identity Height",
+        "group": "surface",
+        "stateSection": "surfaceShape",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -1.0,
+        "max": 1.0
+      },
+      {
+        "key": "smile",
+        "label": "Smile",
+        "group": "expression",
+        "stateSection": "expression",
+        "tier": "curated",
+        "default": 0.0,
+        "min": -1.0,
+        "max": 1.0
       }
     ]
   },
   "meshTopology": {
     "dtype": "uint32",
-    "shape": [1, 3],
-    "values": [0, 1, 2]
+    "shape": [13, 3],
+    "values": [
+      0, 1, 3,
+      0, 3, 2,
+      2, 3, 5,
+      2, 5, 4,
+      4, 5, 7,
+      4, 7, 6,
+      6, 7, 10,
+      6, 10, 9,
+      8, 9, 6,
+      7, 10, 11,
+      9, 10, 13,
+      9, 13, 12,
+      12, 13, 14
+    ]
   },
   "skinningWeights": {
     "dtype": "float32",
-    "shape": [2, 2],
-    "values": [1.0, 0.0, 0.25, 0.75]
+    "shape": [15, 2],
+    "values": [
+      1.0, 0.0,
+      1.0, 0.0,
+      1.0, 0.0,
+      1.0, 0.0,
+      0.65, 0.35,
+      0.65, 0.35,
+      0.25, 0.75,
+      0.25, 0.75,
+      0.0, 1.0,
+      0.0, 1.0,
+      0.0, 1.0,
+      0.0, 1.0,
+      0.2, 0.8,
+      0.2, 0.8,
+      1.0, 0.0
+    ]
+  },
+  "skinningIndices": {
+    "dtype": "uint32",
+    "shape": [15, 2],
+    "values": [
+      0, 0,
+      0, 0,
+      0, 0,
+      0, 0,
+      0, 1,
+      0, 1,
+      0, 1,
+      0, 1,
+      1, 1,
+      1, 1,
+      1, 1,
+      1, 1,
+      1, 2,
+      1, 2,
+      2, 2
+    ]
   },
   "bindMatrices": {
     "dtype": "float32",
-    "shape": [1, 16],
-    "values": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    "shape": [3, 8],
+    "values": [
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0,
+      0.0, 1.08, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0,
+      0.0, 1.86, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0
+    ]
   },
   "inverseBindMatrices": {
     "dtype": "float32",
-    "shape": [1, 16],
-    "values": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    "shape": [3, 8],
+    "values": [
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0,
+      0.0, -1.08, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0,
+      0.0, -1.86, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0
+    ]
   },
   "rigTransforms": {
     "dtype": "float32",
-    "shape": [1, 16],
-    "values": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.1, 0.0, 0.0, 1]
+    "shape": [3, 7],
+    "values": [
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+      0.0, 1.08, 0.0, 0.0, 0.0, 0.0, 1.0,
+      0.0, 0.78, 0.0, 0.0, 0.0, 0.0, 1.0
+    ]
+  },
+  "jointParents": {
+    "dtype": "int32",
+    "shape": [3],
+    "values": [-1, 0, 1]
+  },
+  "parameterTransform": {
+    "dtype": "float32",
+    "shape": [21, 57],
+    "fill": 0.0,
+    "entries": [
+      {"at": [0, 0], "value": 1.0},
+      {"at": [1, 1], "value": 1.0},
+      {"at": [2, 2], "value": 1.0},
+      {"at": [3, 3], "value": 1.0},
+      {"at": [4, 4], "value": 1.0},
+      {"at": [5, 5], "value": 1.0},
+      {"at": [10, 6], "value": 1.0},
+      {"at": [11, 7], "value": 1.0},
+      {"at": [12, 8], "value": 1.0},
+      {"at": [17, 9], "value": 1.0},
+      {"at": [18, 10], "value": 1.0},
+      {"at": [19, 11], "value": 1.0}
+    ]
+  },
+  "parameterLimits": {
+    "dtype": "float32",
+    "shape": [57, 2],
+    "values": [
+      -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+      -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+      -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+      -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+      -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+      -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+      -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+      -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+      -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+      -1.0, 1.0, -1.0, 1.0, -1.0, 1.0
+    ]
+  },
+  "parameterMaskPose": {
+    "dtype": "uint8",
+    "shape": [57],
+    "fill": 0,
+    "entries": [
+      {"at": [3], "value": 1},
+      {"at": [4], "value": 1},
+      {"at": [5], "value": 1},
+      {"at": [6], "value": 1},
+      {"at": [7], "value": 1},
+      {"at": [8], "value": 1},
+      {"at": [9], "value": 1},
+      {"at": [10], "value": 1},
+      {"at": [11], "value": 1}
+    ]
+  },
+  "parameterMaskRigid": {
+    "dtype": "uint8",
+    "shape": [57],
+    "fill": 0,
+    "entries": [
+      {"at": [0], "value": 1},
+      {"at": [1], "value": 1},
+      {"at": [2], "value": 1},
+      {"at": [3], "value": 1},
+      {"at": [4], "value": 1},
+      {"at": [5], "value": 1},
+      {"at": [6], "value": 1},
+      {"at": [7], "value": 1},
+      {"at": [8], "value": 1},
+      {"at": [9], "value": 1},
+      {"at": [10], "value": 1},
+      {"at": [11], "value": 1}
+    ]
+  },
+  "parameterMaskScaling": {
+    "dtype": "uint8",
+    "shape": [57],
+    "fill": 0
   },
   "blendshapeData": {
     "dtype": "float32",
-    "shape": [1, 3],
-    "values": [0.0, 0.0, 0.0]
+    "shape": [47, 15, 3],
+    "fill": 0.0,
+    "entries": [
+      {"at": [0, 0, 0], "value": -0.20},
+      {"at": [0, 1, 0], "value": 0.20},
+      {"at": [0, 2, 0], "value": -0.18},
+      {"at": [0, 3, 0], "value": 0.18},
+      {"at": [0, 4, 0], "value": -0.22},
+      {"at": [0, 5, 0], "value": 0.22},
+      {"at": [0, 6, 0], "value": -0.18},
+      {"at": [0, 7, 0], "value": 0.18},
+      {"at": [0, 8, 0], "value": -0.72},
+      {"at": [0, 9, 0], "value": -0.34},
+      {"at": [0, 10, 0], "value": 0.34},
+      {"at": [0, 11, 0], "value": 0.72},
+      {"at": [0, 12, 0], "value": -0.22},
+      {"at": [0, 13, 0], "value": 0.22},
+      {"at": [0, 14, 0], "value": 0.0},
+      {"at": [0, 0, 1], "value": 0.00},
+      {"at": [0, 1, 1], "value": 0.00},
+      {"at": [0, 2, 1], "value": 0.32},
+      {"at": [0, 3, 1], "value": 0.32},
+      {"at": [0, 4, 1], "value": 0.72},
+      {"at": [0, 5, 1], "value": 0.72},
+      {"at": [0, 6, 1], "value": 1.04},
+      {"at": [0, 7, 1], "value": 1.04},
+      {"at": [0, 8, 1], "value": 1.26},
+      {"at": [0, 9, 1], "value": 1.46},
+      {"at": [0, 10, 1], "value": 1.46},
+      {"at": [0, 11, 1], "value": 1.26},
+      {"at": [0, 12, 1], "value": 1.92},
+      {"at": [0, 13, 1], "value": 1.92},
+      {"at": [0, 14, 1], "value": 2.24},
+      {"at": [1, 0, 0], "value": -0.05},
+      {"at": [1, 1, 0], "value": 0.05},
+      {"at": [1, 4, 0], "value": -0.04},
+      {"at": [1, 5, 0], "value": 0.04},
+      {"at": [1, 8, 0], "value": -0.08},
+      {"at": [1, 11, 0], "value": 0.08},
+      {"at": [1, 12, 0], "value": -0.05},
+      {"at": [1, 13, 0], "value": 0.05},
+      {"at": [2, 6, 1], "value": 0.08},
+      {"at": [2, 7, 1], "value": 0.08},
+      {"at": [2, 9, 1], "value": 0.12},
+      {"at": [2, 10, 1], "value": 0.12},
+      {"at": [2, 12, 1], "value": 0.14},
+      {"at": [2, 13, 1], "value": 0.14},
+      {"at": [2, 14, 1], "value": 0.18},
+      {"at": [46, 12, 1], "value": 0.08},
+      {"at": [46, 13, 1], "value": 0.08},
+      {"at": [46, 12, 0], "value": -0.03},
+      {"at": [46, 13, 0], "value": 0.03},
+      {"at": [46, 9, 1], "value": 0.04},
+      {"at": [46, 10, 1], "value": 0.04}
+    ]
   },
   "correctiveData": {
     "dtype": "float32",
-    "shape": [1, 4],
-    "values": [0.1, 0.2, 0.3, 0.4]
+    "shape": [45, 1],
+    "fill": 0.0
+  },
+  "correctiveSparseIndices": {
+    "dtype": "int64",
+    "shape": [2, 1],
+    "values": [0, 0]
+  },
+  "correctiveSparseWeights": {
+    "dtype": "float32",
+    "shape": [1],
+    "values": [0.0]
   }
 }

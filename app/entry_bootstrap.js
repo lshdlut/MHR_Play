@@ -31,10 +31,19 @@
     return 'both';
   }
 
+  function readDefaultAssetManifest() {
+    const explicit = readRaw('assets');
+    if (explicit) {
+      return explicit;
+    }
+    const datasetValue = root.getAttribute('data-mhr-default-assets');
+    return datasetValue == null ? '' : String(datasetValue).trim();
+  }
+
   const config = {
     startup: {
       standaloneShell: true,
-      assetManifestUrl: readRaw('assets'),
+      assetManifestUrl: readDefaultAssetManifest(),
       entryVariant: 'single',
     },
     ui: {
