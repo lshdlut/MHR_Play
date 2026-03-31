@@ -82,6 +82,12 @@ int mhr_runtime_get_counts(const MhrRuntime* runtime, MhrRuntimeCounts* counts) 
   return guard_const(runtime, [&](const mhr::Runtime& impl) { return impl.get_counts(counts); });
 }
 
+int mhr_runtime_get_debug_timing(const MhrRuntime* runtime, MhrRuntimeDebugTiming* timing) {
+  return guard_const(runtime, [&](const mhr::Runtime& impl) {
+    return impl.get_debug_timing(timing);
+  });
+}
+
 int mhr_runtime_get_vertices(
     const MhrRuntime* runtime,
     float* out_values,

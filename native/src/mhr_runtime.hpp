@@ -42,6 +42,7 @@ class Runtime final {
   bool evaluate();
 
   bool get_counts(MhrRuntimeCounts* counts) const;
+  bool get_debug_timing(MhrRuntimeDebugTiming* timing) const;
   bool copy_joint_parameters(float* out_values, uint32_t count) const;
   bool copy_local_skeleton(float* out_values, uint32_t count) const;
   bool copy_rest_vertices(float* out_values, uint32_t count) const;
@@ -75,6 +76,7 @@ class Runtime final {
   std::vector<float> skin_joint_states_;
   std::vector<float> vertices_;
   std::vector<float> derived_;
+  mutable MhrRuntimeDebugTiming debug_timing_{};
 
   bool bundle_loaded_ = false;
   bool evaluated_ = false;

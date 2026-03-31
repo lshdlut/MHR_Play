@@ -42,8 +42,8 @@ test('preprocess pipeline is deterministic and manifest-valid', async () => {
     const bundleModule = await import(pathToFileURL(path.join(repoRoot, 'core', 'asset_bundle.mjs')).href);
     const validated = bundleModule.validateProcessedBundleManifest(manifestA);
     assert.equal(validated.bundleId, 'minimal-human-fixture');
-    assert.equal(validated.chunkCount, 7);
-    assert.equal(validated.parameterCount, 2);
+    assert.equal(validated.chunkCount, 16);
+    assert.equal(validated.parameterCount, 15);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

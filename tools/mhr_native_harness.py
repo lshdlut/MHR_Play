@@ -27,8 +27,8 @@ SCALAR_TYPES = {
 }
 
 PYTHON_NATIVE_THRESHOLDS = {
-    "maxAbs": 1e-5,
-    "rms": 1e-6,
+    "maxAbs": 1e-12,
+    "rms": 1e-13,
 }
 
 

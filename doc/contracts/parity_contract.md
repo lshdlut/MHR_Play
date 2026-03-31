@@ -11,9 +11,12 @@ release-facing parity targets for the next implementation phases.
 
 Current implementation note:
 
-- the repository currently emits official oracle outputs through the released
-  `mhr_model.pt` TorchScript package because it is available in the local
-  offline tooling environment
+- the repository now treats the official full-package CPU route as the primary
+  correctness oracle for `lod=1`
+- the released `mhr_model.pt` TorchScript package remains a secondary `lod=1`
+  cross-check only; it is no longer the primary oracle
+- the official full-package GPU route is performance-only reference, not the
+  primary numerical oracle
 - the oracle artifact layout is already aligned to the future native/wasm parity
   harness
 - the current native reference harness consumes processed bundle arrays only; it
@@ -46,14 +49,19 @@ Current implementation note:
 
 - preprocessing fingerprint, discrete metadata, and semantic-to-raw mapping:
   exact match
-- official oracle vs native:
-  - `max_abs <= 1e-5`
-  - `rms <= 1e-6`
+- official full-package CPU oracle vs full-exact native reference:
+  - machine precision on the frozen golden cases
+  - operationalized in harness reports as:
+    - `max_abs <= 1e-12`
+    - `rms <= 1e-13`
+- official TorchScript is a `lod=1` cross-check and is not expected to be
+  machine-identical to the full-package oracle
 - native vs wasm:
   - `max_abs <= 1e-6`
   - `rms <= 1e-7`
-- bitwise equality is currently a release target only for preprocessing and
-  discrete metadata, not for the full floating-point forward path
+- bitwise equality remains the target for preprocessing and discrete metadata
+- native exact reference is now expected to sit at machine precision rather than
+  the previous `1e-5` class threshold
 
 ## Gate Rule
 
@@ -65,9 +73,12 @@ the case, the validated outputs, and the threshold that was checked.
 - discrete metadata checks are now exercised by the native harness
 - the native reference runtime can load official processed bundles and emit
   per-case artifacts under `local_tools/mhr_parity/ref_native/`
-- `neutral`, `skin_only`, and `skeleton_only` now reach machine precision
-- the remaining mismatches are localized to two kernels:
-  - trig: `std::sin/cos` vs official `MKL VML`
-  - dense corrective: handwritten loop vs `cblas_sgemv`
-- the current native runtime is parity groundwork, not an exact-parity release
-  gate
+- the native exact reference path now reaches machine precision across all five
+  golden cases against the TorchScript `lod=1` oracle
+- the next correctness migration target is:
+  - `official full CPU -> full-exact native -> portable native -> portable wasm`
+- the exact path is implemented with:
+  - trig: `MKL VML vsSin/vsCos`
+  - dense corrective: `cblas_sgemv`
+- wasm parity still targets the future portable runtime path, not this
+  host-specific exact reference path

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,8 @@ def write_case_dump(case_dir: Path, payload: dict[str, np.ndarray | dict[str, An
 
 
 def main() -> int:
+    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--manifest",

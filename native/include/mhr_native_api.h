@@ -49,6 +49,15 @@ typedef struct MhrRuntimeCounts {
   uint32_t joint_count;
 } MhrRuntimeCounts;
 
+typedef struct MhrRuntimeDebugTiming {
+  float reset_state_ms;
+  float parameter_upload_ms;
+  float evaluate_core_ms;
+  float vertices_export_ms;
+  float skeleton_export_ms;
+  float derived_export_ms;
+} MhrRuntimeDebugTiming;
+
 typedef struct MhrRuntime MhrRuntime;
 
 MHR_NATIVE_EXPORT const char* mhr_native_version(void);
@@ -76,6 +85,10 @@ MHR_NATIVE_EXPORT int mhr_runtime_set_expression(
 );
 MHR_NATIVE_EXPORT int mhr_runtime_evaluate(MhrRuntime* runtime);
 MHR_NATIVE_EXPORT int mhr_runtime_get_counts(const MhrRuntime* runtime, MhrRuntimeCounts* counts);
+MHR_NATIVE_EXPORT int mhr_runtime_get_debug_timing(
+  const MhrRuntime* runtime,
+  MhrRuntimeDebugTiming* timing
+);
 MHR_NATIVE_EXPORT int mhr_runtime_get_vertices(
   const MhrRuntime* runtime,
   float* out_values,

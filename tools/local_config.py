@@ -50,6 +50,55 @@ def resolve_python_executable(repo_root: Path, config: dict[str, Any] | None = N
     )
 
 
+def python_has_exact_runtime_kernels(python_executable: str | Path) -> bool:
+    python_path = Path(python_executable).expanduser().resolve()
+    library_bin = python_path.parent / "Library" / "bin"
+    if not library_bin.exists():
+        return False
+    has_mkl = any((library_bin / filename).exists() for filename in ("mkl_rt.2.dll", "mkl_rt.dll"))
+    has_cblas = (library_bin / "libcblas.dll").exists()
+    return has_mkl and has_cblas
+
+
+def _candidate_python_executables() -> list[Path]:
+    home = Path.home()
+    candidates = [
+        home / "miniforge3" / "envs" / "myconda" / "python.exe",
+        home / "miniforge3" / "python.exe",
+        home / "miniconda3" / "envs" / "myconda" / "python.exe",
+        home / "miniconda3" / "python.exe",
+        home / "anaconda3" / "envs" / "myconda" / "python.exe",
+        home / "anaconda3" / "python.exe",
+    ]
+    for root_name in ("miniforge3", "miniconda3", "anaconda3"):
+        env_root = home / root_name / "envs"
+        if not env_root.exists():
+            continue
+        for env_path in sorted(env_root.iterdir()):
+            candidates.append(env_path / "python.exe")
+    return candidates
+
+
+def resolve_exact_runtime_python_executable(
+    repo_root: Path,
+    config: dict[str, Any] | None = None,
+) -> str:
+    payload = config if config is not None else load_local_config(repo_root)
+    resolved = resolve_python_executable(repo_root, payload)
+    candidates: list[Path] = [Path(resolved).expanduser()]
+    candidates.extend(_candidate_python_executables())
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if candidate.exists() and python_has_exact_runtime_kernels(candidate):
+            return str(candidate.resolve())
+    return resolved
+
+
 def resolve_mhr_reference_root(repo_root: Path, config: dict[str, Any] | None = None) -> Path | None:
     payload = config if config is not None else load_local_config(repo_root)
     value = resolve_config_value(

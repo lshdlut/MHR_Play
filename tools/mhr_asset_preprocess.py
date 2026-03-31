@@ -21,11 +21,20 @@ from mhr_reference import OFFICIAL_ORACLE_KIND, build_parameter_metadata, import
 FIXTURE_REQUIRED_ARRAY_KEYS = (
     "meshTopology",
     "skinningWeights",
+    "skinningIndices",
     "bindMatrices",
     "inverseBindMatrices",
     "rigTransforms",
+    "jointParents",
+    "parameterTransform",
+    "parameterLimits",
+    "parameterMaskPose",
+    "parameterMaskRigid",
+    "parameterMaskScaling",
     "blendshapeData",
     "correctiveData",
+    "correctiveSparseIndices",
+    "correctiveSparseWeights",
 )
 
 
@@ -126,19 +135,34 @@ def validate_fixture_source(source: dict[str, Any]) -> None:
 def encode_fixture_chunk(key: str, block: dict[str, Any], out_dir: Path) -> dict[str, Any]:
     dtype = str(block.get("dtype", "")).strip()
     shape = block.get("shape")
-    values = block.get("values")
     if not dtype:
         raise ValueError(f"{key}: dtype is required")
     if not isinstance(shape, list) or not shape:
         raise ValueError(f"{key}: shape must be a non-empty list")
-    if not isinstance(values, list):
-        raise ValueError(f"{key}: values must be a list")
-
     expected_count = int(np.prod(np.asarray(shape, dtype=np.int64)))
-    if expected_count != len(values):
-        raise ValueError(f"{key}: expected {expected_count} values, got {len(values)}")
-
-    array = np.asarray(values, dtype=dtype).reshape(shape)
+    values = block.get("values")
+    if values is not None:
+        if not isinstance(values, list):
+            raise ValueError(f"{key}: values must be a list")
+        if expected_count != len(values):
+            raise ValueError(f"{key}: expected {expected_count} values, got {len(values)}")
+        array = np.asarray(values, dtype=dtype).reshape(shape)
+    else:
+        fill_value = block.get("fill", 0)
+        array = np.full(shape, fill_value, dtype=dtype)
+        entries = block.get("entries", [])
+        if not isinstance(entries, list):
+            raise ValueError(f"{key}: entries must be a list")
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise ValueError(f"{key}: sparse entries must be objects")
+            coordinates = entry.get("at")
+            if not isinstance(coordinates, list) or len(coordinates) != len(shape):
+                raise ValueError(f"{key}: sparse entry must provide full coordinates")
+            index = tuple(int(value) for value in coordinates)
+            if any(value < 0 or value >= int(shape[dim]) for dim, value in enumerate(index)):
+                raise ValueError(f"{key}: sparse entry index out of bounds: {coordinates}")
+            array[index] = entry.get("value", fill_value)
     return write_chunk(key=key, array=array, out_dir=out_dir)
 
 

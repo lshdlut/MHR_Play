@@ -1,13 +1,33 @@
 #include "mhr_runtime.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdlib>
+#include <filesystem>
 #include <limits>
+#include <mutex>
 #include <sstream>
 #include <string_view>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 namespace mhr {
 namespace {
+
+using SteadyClock = std::chrono::steady_clock;
+
+float elapsed_ms(
+    const SteadyClock::time_point& start,
+    const SteadyClock::time_point& end) {
+  return std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(end - start)
+      .count();
+}
 
 constexpr uint32_t kOfficialIdentityCount = 45;
 constexpr uint32_t kDerivedValueCount = 7;
@@ -49,6 +69,165 @@ struct Transformf final {
   Quatf rotation;
   float scale = 1.0f;
 };
+
+#ifdef _WIN32
+using VsUnaryFn = void(__cdecl*)(int, const float*, float*);
+using CblasSgemvFn = void(__cdecl*)(int, int, int, int, float, const float*, int, const float*, int, float, float*, int);
+
+constexpr int kCblasRowMajor = 101;
+constexpr int kCblasNoTrans = 111;
+
+struct ExactKernelFunctions final {
+  HMODULE mkl_module = nullptr;
+  HMODULE cblas_module = nullptr;
+  VsUnaryFn vs_sin = nullptr;
+  VsUnaryFn vs_cos = nullptr;
+  CblasSgemvFn cblas_sgemv = nullptr;
+};
+
+std::filesystem::path env_path(const char* key) {
+  char* value = nullptr;
+  size_t value_length = 0;
+  if (_dupenv_s(&value, &value_length, key) != 0 || value == nullptr ||
+      value[0] == '\0') {
+    if (value != nullptr) {
+      free(value);
+    }
+    return {};
+  }
+  std::filesystem::path result(value);
+  free(value);
+  return result;
+}
+
+std::vector<std::filesystem::path> candidate_library_paths(
+    const char* override_key,
+    const std::initializer_list<const wchar_t*> fallback_names) {
+  std::vector<std::filesystem::path> candidates;
+
+  const std::filesystem::path override_path = env_path(override_key);
+  if (!override_path.empty()) {
+    candidates.push_back(override_path);
+  }
+
+  const std::filesystem::path python_executable = env_path("PYTHON_EXE");
+  if (!python_executable.empty()) {
+    const std::filesystem::path python_root = python_executable.parent_path();
+    for (const wchar_t* filename : fallback_names) {
+      candidates.push_back(python_root / "Library" / "bin" / filename);
+    }
+  }
+
+  const std::filesystem::path conda_prefix = env_path("CONDA_PREFIX");
+  if (!conda_prefix.empty()) {
+    for (const wchar_t* filename : fallback_names) {
+      candidates.push_back(conda_prefix / "Library" / "bin" / filename);
+    }
+  }
+
+  for (const wchar_t* filename : fallback_names) {
+    candidates.emplace_back(filename);
+  }
+  return candidates;
+}
+
+HMODULE load_dynamic_library(const std::vector<std::filesystem::path>& candidates) {
+  for (const auto& candidate : candidates) {
+    if (candidate.empty()) {
+      continue;
+    }
+    if (candidate.has_parent_path() && !std::filesystem::exists(candidate)) {
+      continue;
+    }
+    if (HMODULE module = LoadLibraryW(candidate.c_str())) {
+      return module;
+    }
+  }
+  return nullptr;
+}
+
+const ExactKernelFunctions* exact_kernels() {
+  static ExactKernelFunctions functions;
+  static std::once_flag once;
+  std::call_once(once, []() {
+    functions.mkl_module = GetModuleHandleW(L"mkl_rt.2.dll");
+    if (functions.mkl_module == nullptr) {
+      functions.mkl_module = GetModuleHandleW(L"mkl_rt.dll");
+    }
+    if (functions.mkl_module == nullptr) {
+      functions.mkl_module = load_dynamic_library(
+          candidate_library_paths("MHR_MKL_DLL", {L"mkl_rt.2.dll", L"mkl_rt.dll"}));
+    }
+    if (functions.mkl_module != nullptr) {
+      functions.vs_sin =
+          reinterpret_cast<VsUnaryFn>(GetProcAddress(functions.mkl_module, "vsSin"));
+      functions.vs_cos =
+          reinterpret_cast<VsUnaryFn>(GetProcAddress(functions.mkl_module, "vsCos"));
+      functions.cblas_sgemv = reinterpret_cast<CblasSgemvFn>(
+          GetProcAddress(functions.mkl_module, "cblas_sgemv"));
+    }
+    if (functions.cblas_sgemv == nullptr) {
+      functions.cblas_module = GetModuleHandleW(L"libcblas.dll");
+      if (functions.cblas_module == nullptr) {
+        functions.cblas_module =
+            load_dynamic_library(candidate_library_paths("MHR_CBLAS_DLL", {L"libcblas.dll"}));
+      }
+      if (functions.cblas_module != nullptr) {
+        functions.cblas_sgemv = reinterpret_cast<CblasSgemvFn>(
+            GetProcAddress(functions.cblas_module, "cblas_sgemv"));
+      }
+    }
+  });
+
+  if (functions.vs_sin == nullptr || functions.vs_cos == nullptr ||
+      functions.cblas_sgemv == nullptr) {
+    return nullptr;
+  }
+  return &functions;
+}
+
+bool exact_sincos3(
+    const float x0,
+    const float x1,
+    const float x2,
+    float* out_sin,
+    float* out_cos) {
+  const ExactKernelFunctions* kernels = exact_kernels();
+  if (kernels == nullptr) {
+    return false;
+  }
+  const float input[3] = {x0, x1, x2};
+  kernels->vs_sin(3, input, out_sin);
+  kernels->vs_cos(3, input, out_cos);
+  return true;
+}
+
+bool exact_sgemv(
+    const int rows,
+    const int columns,
+    const float* matrix,
+    const float* x,
+    float* y) {
+  const ExactKernelFunctions* kernels = exact_kernels();
+  if (kernels == nullptr) {
+    return false;
+  }
+  kernels->cblas_sgemv(
+      kCblasRowMajor,
+      kCblasNoTrans,
+      rows,
+      columns,
+      1.0f,
+      matrix,
+      columns,
+      x,
+      1,
+      0.0f,
+      y,
+      1);
+  return true;
+}
+#endif
 
 Vec3 add_vec(const Vec3& a, const Vec3& b) {
   return Vec3{a.x + b.x, a.y + b.y, a.z + b.z};
@@ -215,6 +394,24 @@ Vec3f rotate_vec_assume_normalizedf(const Quatf& q, const Vec3f& v) {
 }
 
 Quatf euler_xyz_quatf(float rx, float ry, float rz) {
+  float sin_values[3];
+  float cos_values[3];
+#ifdef _WIN32
+  if (exact_sincos3(rx * 0.5f, ry * 0.5f, rz * 0.5f, sin_values, cos_values)) {
+    const float sr = sin_values[0];
+    const float sp = sin_values[1];
+    const float sy = sin_values[2];
+    const float cr = cos_values[0];
+    const float cp = cos_values[1];
+    const float cy = cos_values[2];
+    return Quatf{
+        sr * cp * cy - cr * sp * sy,
+        cr * sp * cy + sr * cp * sy,
+        cr * cp * sy - sr * sp * cy,
+        cr * cp * cy + sr * sp * sy,
+    };
+  }
+#endif
   const float cy = std::cos(rz * 0.5f);
   const float sy = std::sin(rz * 0.5f);
   const float cp = std::cos(ry * 0.5f);
@@ -517,6 +714,8 @@ bool Runtime::reset_state() {
   if (!require_bundle_loaded()) {
     return set_error("Cannot reset state before a bundle is loaded.");
   }
+  debug_timing_ = {};
+  const auto start = SteadyClock::now();
   std::fill(model_parameters_.begin(), model_parameters_.end(), 0.0f);
   std::fill(identity_.begin(), identity_.end(), 0.0f);
   std::fill(expression_.begin(), expression_.end(), 0.0f);
@@ -532,6 +731,7 @@ bool Runtime::reset_state() {
   std::fill(derived_.begin(), derived_.end(), 0.0f);
   evaluated_ = false;
   last_error_.clear();
+  debug_timing_.reset_state_ms = elapsed_ms(start, SteadyClock::now());
   return true;
 }
 
@@ -542,8 +742,10 @@ bool Runtime::set_model_parameters(const float* values, uint32_t count) {
   if (values == nullptr || count != bundle_.model_parameter_count) {
     return set_error("Model parameter count does not match the loaded bundle.");
   }
+  const auto start = SteadyClock::now();
   model_parameters_.assign(values, values + count);
   evaluated_ = false;
+  debug_timing_.parameter_upload_ms += elapsed_ms(start, SteadyClock::now());
   return true;
 }
 
@@ -554,8 +756,10 @@ bool Runtime::set_identity(const float* values, uint32_t count) {
   if (values == nullptr || count != bundle_.identity_count) {
     return set_error("Identity count does not match the loaded bundle.");
   }
+  const auto start = SteadyClock::now();
   identity_.assign(values, values + count);
   evaluated_ = false;
+  debug_timing_.parameter_upload_ms += elapsed_ms(start, SteadyClock::now());
   return true;
 }
 
@@ -566,8 +770,10 @@ bool Runtime::set_expression(const float* values, uint32_t count) {
   if (values == nullptr || count != bundle_.expression_count) {
     return set_error("Expression count does not match the loaded bundle.");
   }
+  const auto start = SteadyClock::now();
   expression_.assign(values, values + count);
   evaluated_ = false;
+  debug_timing_.parameter_upload_ms += elapsed_ms(start, SteadyClock::now());
   return true;
 }
 
@@ -586,11 +792,21 @@ bool Runtime::get_counts(MhrRuntimeCounts* counts) const {
   return true;
 }
 
+bool Runtime::get_debug_timing(MhrRuntimeDebugTiming* timing) const {
+  if (!bundle_loaded_ || timing == nullptr) {
+    return false;
+  }
+  *timing = debug_timing_;
+  return true;
+}
+
 bool Runtime::copy_vertices(float* out_values, uint32_t count) const {
   if (!evaluated_ || out_values == nullptr || count != vertices_.size()) {
     return false;
   }
+  const auto start = SteadyClock::now();
   std::copy(vertices_.begin(), vertices_.end(), out_values);
+  debug_timing_.vertices_export_ms = elapsed_ms(start, SteadyClock::now());
   return true;
 }
 
@@ -654,7 +870,9 @@ bool Runtime::copy_skeleton(float* out_values, uint32_t count) const {
   if (!evaluated_ || out_values == nullptr || count != skeleton_.size()) {
     return false;
   }
+  const auto start = SteadyClock::now();
   std::copy(skeleton_.begin(), skeleton_.end(), out_values);
+  debug_timing_.skeleton_export_ms = elapsed_ms(start, SteadyClock::now());
   return true;
 }
 
@@ -662,7 +880,9 @@ bool Runtime::copy_derived(float* out_values, uint32_t count) const {
   if (!evaluated_ || out_values == nullptr || count != derived_.size()) {
     return false;
   }
+  const auto start = SteadyClock::now();
   std::copy(derived_.begin(), derived_.end(), out_values);
+  debug_timing_.derived_export_ms = elapsed_ms(start, SteadyClock::now());
   return true;
 }
 
@@ -670,6 +890,13 @@ bool Runtime::evaluate() {
   if (!require_bundle_loaded()) {
     return set_error("Cannot evaluate before a bundle is loaded.");
   }
+  const auto evaluate_start = SteadyClock::now();
+#ifdef _WIN32
+  if (exact_kernels() == nullptr) {
+    return set_error(
+        "Exact reference kernels unavailable. Set PYTHON_EXE or MHR_MKL_DLL/MHR_CBLAS_DLL.");
+  }
+#endif
 
   const BundleArray& parameter_transform = bundle_.arrays.at("parameterTransform");
   const BundleArray& rig_transforms = bundle_.arrays.at("rigTransforms");
@@ -784,12 +1011,32 @@ bool Runtime::evaluate() {
     const float rx = joint_values[3];
     const float ry = joint_values[4];
     const float rz = joint_values[5];
-    const float cx = std::cos(rx);
-    const float cy = std::cos(ry);
-    const float cz = std::cos(rz);
-    const float sx = std::sin(rx);
-    const float sy = std::sin(ry);
-    const float sz = std::sin(rz);
+    float sin_values[3];
+    float cos_values[3];
+    float sx;
+    float sy;
+    float sz;
+    float cx;
+    float cy;
+    float cz;
+#ifdef _WIN32
+    if (exact_sincos3(rx, ry, rz, sin_values, cos_values)) {
+      sx = sin_values[0];
+      sy = sin_values[1];
+      sz = sin_values[2];
+      cx = cos_values[0];
+      cy = cos_values[1];
+      cz = cos_values[2];
+    } else
+#endif
+    {
+      cx = std::cos(rx);
+      cy = std::cos(ry);
+      cz = std::cos(rz);
+      sx = std::sin(rx);
+      sy = std::sin(ry);
+      sz = std::sin(rz);
+    }
     const size_t offset = static_cast<size_t>(joint_index - 2U) * 6U;
     pose_features_[offset + 0] = cy * cz - 1.0f;
     pose_features_[offset + 1] = cy * sz;
@@ -816,6 +1063,17 @@ bool Runtime::evaluate() {
   }
 
   std::fill(corrective_delta_.begin(), corrective_delta_.end(), 0.0f);
+#ifdef _WIN32
+  if (!exact_sgemv(
+          static_cast<int>(vertex_value_count),
+          static_cast<int>(hidden_count),
+          corrective_dense_values,
+          hidden_.data(),
+          corrective_delta_.data())) {
+    return set_error(
+        "Exact reference kernels unavailable. Set PYTHON_EXE or MHR_MKL_DLL/MHR_CBLAS_DLL.");
+  }
+#else
   for (size_t offset = 0; offset < vertex_value_count; ++offset) {
     double corrective_delta = 0.0;
     const float* row = corrective_dense_values + offset * hidden_count;
@@ -824,6 +1082,9 @@ bool Runtime::evaluate() {
           static_cast<double>(row[column]) * static_cast<double>(hidden_[column]);
     }
     corrective_delta_[offset] = static_cast<float>(corrective_delta);
+  }
+#endif
+  for (size_t offset = 0; offset < vertex_value_count; ++offset) {
     rest_vertices_[offset] += corrective_delta_[offset];
   }
 
@@ -904,6 +1165,7 @@ bool Runtime::evaluate() {
   derived_[6] = max_y - min_y;
   evaluated_ = true;
   last_error_.clear();
+  debug_timing_.evaluate_core_ms = elapsed_ms(evaluate_start, SteadyClock::now());
   return true;
 }
 

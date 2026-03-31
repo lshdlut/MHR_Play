@@ -14,6 +14,7 @@ function runOptionalPython(args, env = {}) {
     encoding: 'utf8',
     env: {
       ...process.env,
+      KMP_DUPLICATE_LIB_OK: process.env.KMP_DUPLICATE_LIB_OK || 'TRUE',
       ...env,
     },
   });
@@ -74,10 +75,10 @@ test('native reference smoke', async (t) => {
     }
     for (const entry of report.cases) {
       assert.ok(entry.oracleComparison);
-      assert.ok(entry.oracleComparison.vertices.maxAbs < 1e-3);
-      assert.ok(entry.oracleComparison.vertices.rms < 1e-4);
-      assert.ok(entry.oracleComparison.skeleton.maxAbs < 1e-4);
-      assert.ok(entry.oracleComparison.skeleton.rms < 1e-5);
+      assert.ok(entry.oracleComparison.vertices.maxAbs <= 1e-12);
+      assert.ok(entry.oracleComparison.vertices.rms <= 1e-13);
+      assert.ok(entry.oracleComparison.skeleton.maxAbs <= 1e-12);
+      assert.ok(entry.oracleComparison.skeleton.rms <= 1e-13);
     }
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
