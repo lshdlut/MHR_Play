@@ -11,3 +11,4 @@ dist/
 local_tools/
 release_assets/
 tmp/
+.playwright-cli/
