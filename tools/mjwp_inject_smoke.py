@@ -69,6 +69,25 @@ def eval_js(repo_root: Path, npx_path: Path, session: str, source: str) -> objec
     return json.loads(payload) if isinstance(payload, str) else payload
 
 
+def wait_for_condition(
+    repo_root: Path,
+    npx_path: Path,
+    session: str,
+    source: str,
+    predicate,
+    timeout_s: float,
+) -> object:
+    deadline = time.time() + max(timeout_s, 0.1)
+    last_payload = None
+    while time.time() < deadline:
+        payload = eval_js(repo_root, npx_path, session, source)
+        last_payload = payload
+        if predicate(payload):
+            return payload
+        time.sleep(0.2)
+    raise TimeoutError(f"Timed out waiting for condition. Last payload: {last_payload}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("base_url", help="base URL for the local mjwp_inject server")
@@ -99,8 +118,11 @@ def main() -> int:
         "() => JSON.stringify({"
         " title: document.title,"
         " profile: document.documentElement?.getAttribute('data-play-profile') ?? '',"
+        " visualSourceMode: window.__PLAY_HOST__?.store?.get?.()?.visualSourceMode ?? '',"
         " controlCount: document.querySelectorAll('[data-testid=\"section-plugin:mhr-control\"]').length,"
         " scaleCount: document.querySelectorAll('[data-testid=\"section-plugin:mhr-scale\"]').length,"
+        " controlActionRows: document.querySelectorAll('.mhr-control-action-row').length,"
+        " controlBoolRows: document.querySelectorAll('.mhr-control-bool-row').length,"
         " hasHost: !!window.__PLAY_HOST__,"
         " hasBackend: !!window.__PLAY_HOST__?.backend,"
         " hasMesh: !!window.__renderCtx?.scene?.getObjectByName?.('mhr-profile:mesh'),"
@@ -120,15 +142,51 @@ def main() -> int:
         last_payload = payload
         if (
             payload.get("profile") == "mhr"
+            and payload.get("visualSourceMode") == "preset-sun"
             and payload.get("hasHost")
             and payload.get("hasBackend")
             and payload.get("hasService")
             and payload.get("hasMesh")
+            and int(payload.get("controlActionRows", 0)) >= 1
+            and int(payload.get("controlBoolRows", 0)) >= 1
             and int(payload.get("vertexCount", 0)) > 0
             and int(payload.get("jointCount", 0)) > 0
             and int(payload.get("controlCount", 0)) == 1
             and int(payload.get("scaleCount", 0)) == 1
         ):
+            eval_js(
+                repo_root,
+                npx_path,
+                args.session,
+                (
+                    "() => JSON.stringify({"
+                    " clicked: (() => {"
+                    "   const root = document.querySelector('[data-testid=\"mhr-joint-labels\"]');"
+                    "   if (!root) return false;"
+                    "   const input = root.matches('input[type=\"checkbox\"]') ? root : root.querySelector('input[type=\"checkbox\"]');"
+                    "   if (input && !input.checked) { input.click(); return true; }"
+                    "   const button = root.matches('button,[role=\"button\"]') ? root : root.querySelector('button,[role=\"button\"]');"
+                    "   if (button && String(button.getAttribute('aria-pressed') || '').toLowerCase() !== 'true') { button.click(); return true; }"
+                    "   return true;"
+                    " })()"
+                    "})"
+                ),
+            )
+            label_payload = wait_for_condition(
+                repo_root,
+                npx_path,
+                args.session,
+                (
+                    "() => JSON.stringify({"
+                    " labelsDrawn: Number(window.__PLAY_HOST__?.renderer?.getContext?.()?.labelOverlay?.mhrJointLabelsDrawn || 0),"
+                    " sample: window.__PLAY_HOST__?.renderer?.getContext?.()?.labelOverlay?.mhrJointLabelsSample || null"
+                    "})"
+                ),
+                lambda value: isinstance(value, dict) and int(value.get("labelsDrawn", 0)) > 0,
+                timeout_s=8.0,
+            )
+            payload["jointLabelsDrawn"] = int(label_payload.get("labelsDrawn", 0))
+            payload["jointLabelsSample"] = label_payload.get("sample")
             print(json.dumps({"ok": True, "payload": payload}))
             run_cli(repo_root, npx_path, args.session, "close")
             return 0

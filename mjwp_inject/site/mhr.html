@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MuJoCo WASM Play – MHR Profile</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="favicon.ico" />
+    <link rel="stylesheet" href="./app/viewer_shell.css" />
+    <link rel="stylesheet" href="./mhr.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script src="./site_config.js"></script>
+    <script>
+      (() => {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.get('model')) {
+          url.searchParams.set('model', 'model/mhr_stage.xml');
+          history.replaceState(null, '', url);
+        }
+        globalThis.PLAY_UI_PROFILE = 'mhr';
+        globalThis.PLAY_PLUGINS = ['./plugins/mhr_profile_plugin.mjs'];
+        globalThis.PLAY_MHR_MANIFEST_URL = '/mhr-official/manifest.json';
+        globalThis.PLAY_MHR_ASSET_BASE_URL = '/mhr-official/';
+        globalThis.PLAY_UI_PANEL_DEFAULTS = { left: true, right: true };
+        globalThis.PLAY_UI_SECTION_DEFAULT_OPEN = {
+          left: {
+            'plugin:mhr-control': true,
+            'plugin:mhr-scale': true,
+            'plugin:mhr-blend': true,
+          },
+          right: {
+            'plugin:mhr-pose': true,
+            'plugin:mhr-fixed': true,
+          },
+        };
+      })();
+    </script>
+    <script data-play-entry-variant="single" src="./app/entry_bootstrap.js"></script>
+  </head>
+  <body>
+    <script data-play-shell-module="./app/main.mjs" src="./app/viewer_shell.js"></script>
+  </body>
+</html>

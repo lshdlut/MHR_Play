@@ -1,0 +1,67 @@
+--- a/renderer/pipeline.mjs
++++ b/renderer/pipeline.mjs
+@@ -2789,6 +2789,7 @@
+   const tempVecD = new THREE.Vector3();
+ 
+   const frameSubscribers = new Set();
++  const labelOverlaySubscribers = new Set();
+   let pendingSceneSnapshot = null;
+   let pendingSceneState = null;
+   let pendingSceneDirty = false;
+@@ -2805,6 +2806,12 @@
+     if (typeof fn !== 'function') return () => {};
+     frameSubscribers.add(fn);
+     return () => frameSubscribers.delete(fn);
++  }
++
++  function onLabelOverlay(fn) {
++    if (typeof fn !== 'function') return () => {};
++    labelOverlaySubscribers.add(fn);
++    return () => labelOverlaySubscribers.delete(fn);
+   }
+ 
+   // Expose a small helper so other modules (e.g. environment manager)
+@@ -2888,6 +2895,23 @@
+         });
+       } else {
+         clearLabelOverlay(ctx);
++      }
++      if (labelOverlaySubscribers.size) {
++        const overlay = syncLabelOverlayViewport(ctx);
++        for (const fn of labelOverlaySubscribers) {
++          try {
++            fn({
++              ctx,
++              overlay,
++              snapshot: lastFrameSnapshot,
++              state: lastFrameState,
++              frame,
++            });
++          } catch (err) {
++            logWarn('[clock] label overlay subscriber error', err);
++            strictCatch(err, 'main:clock_label_overlay_subscriber');
++          }
++        }
+       }
+       if (perfEnabled) {
+         const info = ctx.renderer?.info?.render || null;
+@@ -3745,6 +3769,7 @@
+     renderScene,
+     ensureRenderLoop,
+     updateViewport: () => updateRendererViewport(),
++    onLabelOverlay,
+     onFrame,
+     getContext,
+     getOverlay3D,
+--- a/app/main.mjs
++++ b/app/main.mjs
+@@ -894,6 +894,9 @@
+     getContext: () => (rendererManager.getContext ? rendererManager.getContext() : (renderCtx.initialized ? renderCtx : null)),
+     ensureLoop: () => rendererManager.ensureRenderLoop(),
+     renderScene: (snapshot, state) => rendererManager.renderScene(snapshot, state),
++    labelOverlay: {
++      register: (fn) => (rendererManager.onLabelOverlay ? rendererManager.onLabelOverlay(fn) : (() => {})),
++    },
+     getOverlay3D: () => (rendererManager.getOverlay3D ? rendererManager.getOverlay3D() : null),
+     overlay3d: {
+       get: () => (rendererManager.getOverlay3D ? rendererManager.getOverlay3D() : null),

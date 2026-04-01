@@ -1,0 +1,54 @@
+diff --git a/environment/environment.mjs b/environment/environment.mjs
+index 1ada264..6519c80 100644
+--- a/environment/environment.mjs
++++ b/environment/environment.mjs
+@@ -74,19 +74,19 @@ const FALLBACK_PRESET_TEMPLATES = {
+     // Base clear colour used when no skybox/environment is active.
+     clearColor: 0xe6ebf2,
+     exposure: 0.82,
+-    ambient: { color: 0xf0f4ff, intensity: 0.15 },
+-    hemi: { sky: 0xf0f4ff, ground: 0x10121a, intensity: 0.24 },
++    ambient: { color: 0xf0f4ff, intensity: 0.28 },
++    hemi: { sky: 0xf0f4ff, ground: 0xffffff, intensity: 0.34 },
+     dir: {
+       color: 0xffffff,
+-      intensity: 3.1,
++      intensity: 1.55,
+       position: [9, -5.3, 6],
+       target: [0, 0, 1],
+       shadowBias: -0.0001,
+     },
+-    fill: { color: 0xb6d5ff, intensity: 0.16, position: [-4, 3, 2] },
++    fill: { color: 0xe7efff, intensity: 0.30, position: [-4, 3, 2] },
+     shadowBias: -0.00015,
+-    // Kept deliberately low so HDRI does not wash out shadows.
+-    envIntensity: 0.48,
++    // Keep some IBL so form reads clearly without strong per-face contrast.
++    envIntensity: 0.66,
+     // Preset-specific environment settings
+     hdriFile: 'rustig_koppie_puresky_4k.hdr',
+     backgroundMode: 'hdri',
+@@ -94,20 +94,10 @@ const FALLBACK_PRESET_TEMPLATES = {
+     ground: {
+       style: 'shadow',
+       opacity: 1.0,
+-      color: 0xe8e6e0,
++      color: 0xffffff,
+       metallic: 0,
+-      roughness: 0.86,
+-      surface: {
+-        albedoFile: 'preset-ground/sandy_gravel_diff_2k.jpg',
+-        normalFile: 'preset-ground/sandy_gravel_nor_gl_2k.png',
+-        roughnessFile: 'preset-ground/sandy_gravel_rough_2k.png',
+-        projection: 'infinite',
+-        // Sandy Gravel captures a much smaller ground footprint, so keeping
+-        // repeat near 0.95 preserves its denser near-field texel density.
+-        repeat: 0.95,
+-        albedoGain: 1.8,
+-        normalScale: 0.36,
+-      },
++      roughness: 0.98,
++      surface: null,
+       infinite: {
+         distance: 2000,
+         fadePow: 2.5,

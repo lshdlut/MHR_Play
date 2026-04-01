@@ -36,9 +36,12 @@ function Resolve-PythonExe() {
     throw "Required tool not found in PATH: python (or set PYTHON_EXE)."
 }
 
-function Copy-OverlayTree([string]$OverlayRoot, [string]$DestinationRoot) {
-    Get-ChildItem -LiteralPath $OverlayRoot -Recurse -Force | ForEach-Object {
-        $relative = $_.FullName.Substring($OverlayRoot.Length).TrimStart('\', '/')
+function Copy-TreeIntoRoot([string]$SourceRoot, [string]$DestinationRoot) {
+    if (-not (Test-Path -LiteralPath $SourceRoot)) {
+        return
+    }
+    Get-ChildItem -LiteralPath $SourceRoot -Recurse -Force | ForEach-Object {
+        $relative = $_.FullName.Substring($SourceRoot.Length).TrimStart('\', '/')
         if (-not $relative) { return }
         $target = Join-Path $DestinationRoot $relative
         if ($_.PSIsContainer) {
@@ -53,6 +56,29 @@ function Copy-OverlayTree([string]$OverlayRoot, [string]$DestinationRoot) {
     }
 }
 
+function Copy-FileIntoRoot([string]$SourceFile, [string]$DestinationFile) {
+    $targetParent = Split-Path -Parent $DestinationFile
+    if ($targetParent) {
+        New-Item -ItemType Directory -Force -Path $targetParent | Out-Null
+    }
+    Copy-Item -LiteralPath $SourceFile -Destination $DestinationFile -Force
+}
+
+function Apply-PatchSet([string]$PatchRoot, [string]$DestinationRoot) {
+    if (-not (Test-Path -LiteralPath $PatchRoot)) {
+        return @()
+    }
+    $patches = @(Get-ChildItem -LiteralPath $PatchRoot -Filter *.patch -File | Sort-Object Name)
+    foreach ($patch in $patches) {
+        Write-Host "[mjwp_inject] applying patch -> $($patch.Name)"
+        & git -C $DestinationRoot apply --ignore-space-change --ignore-whitespace $patch.FullName
+        if ($LASTEXITCODE -ne 0) {
+            throw "git apply failed for patch $($patch.FullName)"
+        }
+    }
+    return $patches
+}
+
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw "Required tool not found in PATH: git"
 }
@@ -61,7 +87,9 @@ $pythonExe = Resolve-PythonExe
 $repoRoot = Resolve-AbsPath (Join-Path $PSScriptRoot "..")
 $playSrcAbs = Resolve-AbsPath $PlaySrc
 $workDirAbs = Resolve-AbsPath (New-Item -ItemType Directory -Force -Path $WorkDir).FullName
-$overlayRoot = Resolve-AbsPath (Join-Path $repoRoot "mjwp_inject\\overlay")
+$pluginRoot = Resolve-AbsPath (Join-Path $repoRoot "mjwp_inject\\plugin")
+$siteRoot = Resolve-AbsPath (Join-Path $repoRoot "mjwp_inject\\site")
+$patchRoot = Resolve-AbsPath (Join-Path $repoRoot "mjwp_inject\\patches")
 $playClone = Join-Path $workDirAbs "play"
 $metaPath = Join-Path $playClone ".mjwp_inject_meta.json"
 $playParent = Split-Path -Parent $playSrcAbs
@@ -123,14 +151,30 @@ if ($PlayRef) {
     }
 }
 
-Write-Host "[mjwp_inject] overlaying MHR-owned play integration"
-Copy-OverlayTree $overlayRoot $playClone
+$patches = Apply-PatchSet $patchRoot $playClone
+
+Write-Host "[mjwp_inject] copying MHR plugin and page files"
+Copy-TreeIntoRoot $pluginRoot $playClone
+Copy-TreeIntoRoot $siteRoot $playClone
+
+Write-Host "[mjwp_inject] copying shared runtime modules"
+$sharedCopies = @(
+    @{ source = (Join-Path $repoRoot "core\\asset_bundle.mjs"); destination = (Join-Path $playClone "mhr_shared\\core\\asset_bundle.mjs") },
+    @{ source = (Join-Path $repoRoot "core\\runtime_config.mjs"); destination = (Join-Path $playClone "mhr_shared\\core\\runtime_config.mjs") },
+    @{ source = (Join-Path $repoRoot "core\\state_mapping.mjs"); destination = (Join-Path $playClone "mhr_shared\\core\\state_mapping.mjs") },
+    @{ source = (Join-Path $repoRoot "worker\\mhr_runtime_wasm.gen.mjs"); destination = (Join-Path $playClone "mhr_shared\\worker\\mhr_runtime_wasm.gen.mjs") }
+)
+foreach ($entry in $sharedCopies) {
+    Copy-FileIntoRoot $entry.source $entry.destination
+}
 
 $meta = @{
     repoRoot = $repoRoot
     playSrc = $playSrcAbs
     playRef = if ($PlayRef) { $PlayRef } else { "" }
     appliedAt = (Get-Date).ToString("o")
+    patchCount = @($patches).Count
+    sharedCopies = @($sharedCopies | ForEach-Object { $_.destination.Replace($playClone, "").TrimStart('\') })
 }
 $meta | ConvertTo-Json | Set-Content -LiteralPath $metaPath -Encoding UTF8
 
@@ -145,11 +189,13 @@ if ($NoServe) {
 }
 
 Write-Host "[mjwp_inject] serving play clone on port $Port (Ctrl+C to stop)"
-$env:MHR_PLAY_ROOT = $repoRoot
-if (Test-Path -LiteralPath $playForgeRoot) {
-    $env:PLAY_FORGE_ROOT = (Resolve-Path -LiteralPath $playForgeRoot).Path
-}
-& $pythonExe (Join-Path $playClone "tools\\dev_server.py") --root $playClone --port $Port
+& $pythonExe (Join-Path $repoRoot "mjwp_inject\\server.py") `
+    --root $playClone `
+    --repo-root $repoRoot `
+    --forge-root $playForgeRoot `
+    --official-root $officialRuntimeIrDir `
+    --demo-root (Join-Path $repoRoot "demo_assets") `
+    --port $Port
 if ($LASTEXITCODE -ne 0) {
-    throw "dev_server.py failed with exit code $LASTEXITCODE"
+    throw "mjwp_inject/server.py failed with exit code $LASTEXITCODE"
 }
