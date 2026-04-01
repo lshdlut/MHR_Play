@@ -1,9 +1,9 @@
 # MHR Play
 
 `MHR Play` is an embeddable `front-end + worker` application for MHR-focused
-runtime exploration. The repository now includes a standalone
-shell, a stable embed surface, a processed demo bundle, a wasm worker runtime,
-and an official TorchScript/native reference lane for parity work.
+runtime exploration. The repository is organized around a standalone shell, a
+stable embed surface, a processed demo bundle, a wasm worker runtime, and a
+small but credible native/parity proof lane.
 
 ## Current Status
 
@@ -25,9 +25,9 @@ and an official TorchScript/native reference lane for parity work.
   through the worker-owned wasm runtime.
 - `index.html` and `embed.html` are the two public surfaces:
   standalone GitHub Pages style delivery and explicit host embedding.
-- `mjwp_inject/` owns the Play-hosted downstream MHR surface and assembles a
-  disposable `mujoco-wasm-play` clone instead of modifying the sibling Play
-  working tree directly.
+- `mjwp_inject/` owns the Play-hosted downstream MHR dev surface and assembles a
+  disposable clean `mujoco-wasm-play` clone from `patches/`, `plugin/`, and
+  `site/` inputs instead of tracking a copied Play tree.
 
 ## Layout
 
@@ -38,7 +38,7 @@ and an official TorchScript/native reference lane for parity work.
 - `ui/`: UI-only store and control surface
 - `worker/`: generated protocol glue and wasm runtime owner
 - `tools/`: dev server, protocol generator, boundary checker, preprocessing,
-  oracle generation, demo-bundle/export/release helpers
+  oracle generation, demo-bundle/export/release helpers, and downstream Play smoke
 - `tests/`: Node-based tooling and contract checks
 - `doc/`: product, architecture, parity, asset, and integration contracts
 - `native/`: native reference runtime core and C ABI for parity work
@@ -47,6 +47,7 @@ and an official TorchScript/native reference lane for parity work.
 
 - `demo_assets/` is tracked because it is part of the shipped standalone site surface.
 - `dist/`, `local_tools/`, and `tmp/` are local-only output areas and stay ignored.
+- `mjwp_inject/` is dev/integration-only and does not participate in site export.
 - Local machine coordination and config stay untracked under `.agents_arena/`,
   `AGENTS.md`, and `.repo_local_config.json`.
 
@@ -59,6 +60,8 @@ and an official TorchScript/native reference lane for parity work.
 - `npm run test`
 - `npm run preprocess:official`
 - `npm run parity:python`
+- `npm run parity:portable`
+- `npm run bench:native`
 - `npm run build:native`
 - `npm run build:demo-bundle`
 - `npm run build:wasm`
@@ -67,7 +70,6 @@ and an official TorchScript/native reference lane for parity work.
 - `npm run test:native-smoke`
 - `npm run test:browser-smoke`
 - `npm run parity:native`
-- `npm run parity:native-stages`
 - `npm run test:official-assets`
 - `npm run release:check`
 

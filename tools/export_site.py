@@ -63,6 +63,17 @@ def main() -> int:
     for relative in required_files:
         shutil.copy2(repo_root / relative, out_dir / relative)
 
+    forbidden_entries = [
+        "mjwp_inject",
+        "native",
+        "tests",
+        "tools",
+        "doc",
+    ]
+    for relative in forbidden_entries:
+        if (out_dir / relative).exists():
+            raise RuntimeError(f"Exported site must not contain dev-only content: {relative}")
+
     print(f"Exported site artifact to {out_dir}")
     return 0
 

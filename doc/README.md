@@ -21,6 +21,13 @@ This repository keeps the M0-M3 contracts in `doc/contracts/`.
 
 - `site_release_checklist.md`
 
+## Integration
+
+- `integration/play_mhr_integration.md`
+
+Development-only investigations and recovery audits stay local-only and should
+not be tracked in the published repo history.
+
 ## Top-Level Runtime Charter
 
 - `../ARCHITECTURE.md`

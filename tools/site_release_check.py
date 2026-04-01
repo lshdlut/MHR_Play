@@ -49,6 +49,17 @@ def main() -> int:
         if not required_path.exists():
             raise FileNotFoundError(f"Missing exported artifact path: {required_path}")
 
+    forbidden_paths = [
+        artifact_root / "mjwp_inject",
+        artifact_root / "native",
+        artifact_root / "tests",
+        artifact_root / "tools",
+        artifact_root / "doc",
+    ]
+    for forbidden_path in forbidden_paths:
+        if forbidden_path.exists():
+            raise RuntimeError(f"Exported site contains dev-only content: {forbidden_path}")
+
     server = subprocess.Popen(
         [
             sys.executable,
