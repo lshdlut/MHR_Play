@@ -95,8 +95,8 @@ def find_button_ref(snapshot_path: Path, label: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("base_url", help="base URL for the local/public beta server")
-    parser.add_argument("--session", default="mhr-beta-smoke")
+    parser.add_argument("base_url", help="base URL for the local site server")
+    parser.add_argument("--session", default="mhr-site-smoke")
     args = parser.parse_args()
 
     repo_root = repo_root_from_here(__file__)

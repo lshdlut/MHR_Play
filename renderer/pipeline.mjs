@@ -29,7 +29,7 @@ function normalizeCompareMode(compareMode) {
 function formatOverlay(snapshot, uiState) {
   const evaluation = snapshot?.evaluation || null;
   return [
-    'MHR Play Beta Viewer',
+    'MHR Play Viewer',
     `status: ${snapshot?.status || 'unknown'}`,
     `compareMode: ${normalizeCompareMode(uiState?.view?.compareMode || 'both')}`,
     `revision: ${snapshot?.revision || 0}`,
@@ -132,7 +132,7 @@ function makePlaceholderCard(canvas, overlay, renderer, scene, camera) {
   renderer.setClearColor(0xf4ebda, 1);
   renderer.render(scene, camera);
   if (overlay) {
-    overlay.textContent = 'MHR Play Beta Viewer\nstatus: booting\nbundle: not loaded\nvertices: 0\njoints: 0';
+    overlay.textContent = 'MHR Play Viewer\nstatus: booting\nbundle: not loaded\nvertices: 0\njoints: 0';
   }
 }
 

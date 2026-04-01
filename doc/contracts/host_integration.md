@@ -1,4 +1,4 @@
-# Host Integration Draft
+# Host Integration
 
 The current host-facing API is intentionally narrow.
 

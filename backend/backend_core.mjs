@@ -108,7 +108,7 @@ export async function createBackend({ runtimeConfig, assetConfig = null } = {}) 
     ready(payload) {
       applyMutation((draft) => {
         draft.status = 'ready';
-        draft.contractVersion = payload.contractVersion || 'draft';
+        draft.contractVersion = payload.contractVersion || 'v1';
         draft.capabilities = payload.capabilities || {};
       });
     },

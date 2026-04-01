@@ -28,7 +28,7 @@ def run(repo_root: Path, *args: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8010)
-    parser.add_argument("--artifact", default="dist/public_beta")
+    parser.add_argument("--artifact", default="dist/site")
     args = parser.parse_args()
 
     repo_root = repo_root_from_here(__file__)
@@ -37,7 +37,7 @@ def main() -> int:
     run(repo_root, *COMMON_TEST_ARGS)
     run(repo_root, "tools/build_demo_bundle.py")
     run(repo_root, "tools/build_wasm_runtime.py")
-    run(repo_root, "tools/export_public_beta.py", "--out", args.artifact)
+    run(repo_root, "tools/export_site.py", "--out", args.artifact)
 
     required_paths = [
         artifact_root / "index.html",

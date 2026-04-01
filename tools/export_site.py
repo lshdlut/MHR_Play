@@ -32,7 +32,7 @@ def clear_directory(path: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default="dist/public_beta", help="output directory")
+    parser.add_argument("--out", default="dist/site", help="output directory")
     args = parser.parse_args()
 
     repo_root = repo_root_from_here(__file__)
@@ -63,7 +63,7 @@ def main() -> int:
     for relative in required_files:
         shutil.copy2(repo_root / relative, out_dir / relative)
 
-    print(f"Exported public beta artifact to {out_dir}")
+    print(f"Exported site artifact to {out_dir}")
     return 0
 
 

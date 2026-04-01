@@ -31,7 +31,7 @@ function defaultManifestUrl() {
   return './demo_assets/manifest.json';
 }
 
-function selectBetaParameters(parameterMetadata) {
+function selectDemoParameters(parameterMetadata) {
   const parameters = Array.isArray(parameterMetadata?.parameters)
     ? parameterMetadata.parameters
     : [];
@@ -86,8 +86,8 @@ export function createControlManager({ leftPanelMount, rightPanelMount, store, b
   leftPanelMount.append(
     createCard(
       documentRef,
-      'Beta Shell',
-      'This shell is now wired to live worker/wasm runtime outputs while keeping the host contract narrow and stable.',
+      'Runtime Shell',
+      'This shell is wired to live worker/wasm runtime outputs while keeping the host contract narrow and stable.',
     ),
   );
 
@@ -152,8 +152,8 @@ export function createControlManager({ leftPanelMount, rightPanelMount, store, b
       return;
     }
 
-    const betaParameters = selectBetaParameters(parameterMetadata);
-    if (!betaParameters.length) {
+    const demoParameters = selectDemoParameters(parameterMetadata);
+    if (!demoParameters.length) {
       return;
     }
 
@@ -182,7 +182,7 @@ export function createControlManager({ leftPanelMount, rightPanelMount, store, b
         await backend.evaluate({ compareMode: store.get().view.compareMode });
       }),
     );
-    parameterPanel.append(createCard(documentRef, 'Presets', 'Minimal beta presets for quick validation.'));
+    parameterPanel.append(createCard(documentRef, 'Presets', 'Minimal presets for quick validation.'));
     parameterPanel.append(presets);
 
     const controlsCard = documentRef.createElement('section');
@@ -192,7 +192,7 @@ export function createControlManager({ leftPanelMount, rightPanelMount, store, b
     title.textContent = 'Parameters';
     controlsCard.append(title);
 
-    for (const parameter of betaParameters) {
+    for (const parameter of demoParameters) {
       const row = documentRef.createElement('label');
       row.className = 'mhr-slider';
       const name = documentRef.createElement('span');

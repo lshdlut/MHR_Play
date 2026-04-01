@@ -2,7 +2,12 @@ AGENTS.md
 .agents_arena/
 .repo_local_config.json
 __pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.cache/
 *.pyc
+*.log
 *.obj
 *.lib
 *.exp
@@ -12,3 +17,4 @@ local_tools/
 release_assets/
 tmp/
 .playwright-cli/
+.mjwp_inject_server.pid

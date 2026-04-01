@@ -61,12 +61,12 @@ test('contract documents are present', () => {
     'doc/contracts/state_schema.md',
     'doc/contracts/panel_schema.md',
     'doc/contracts/semantic_to_raw_mapping.md',
-    'doc/contracts/worker_protocol_draft.md',
-    'doc/contracts/host_integration_draft.md',
+    'doc/contracts/worker_protocol.md',
+    'doc/contracts/host_integration.md',
     'doc/contracts/parity_contract.md',
     'doc/contracts/asset_manifest_contract.md',
     'doc/contracts/asset_bundle_format.md',
-    'doc/beta_release_checklist.md',
+    'doc/site_release_checklist.md',
     'tests/golden_cases/manifest.json',
   ];
   for (const docPath of requiredDocs) {

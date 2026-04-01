@@ -1,4 +1,4 @@
-# Worker Protocol Draft
+# Worker Protocol
 
 The worker protocol is formal and generated from `tools/worker_protocol.json`.
 
@@ -19,7 +19,7 @@ The worker protocol is formal and generated from `tools/worker_protocol.json`.
 - `presets`: `presetApplied`, `sweepProgress`
 - `diagnostics`: `diagnostic`, `error`
 
-## Draft Shapes
+## Command Shapes
 
 ### `loadAssets`
 

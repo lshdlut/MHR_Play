@@ -32,12 +32,12 @@ export function mountViewerShell(documentRef, target = documentRef.body) {
   const masthead = createElement(documentRef, 'header', 'mhr-shell__masthead');
   masthead.append(
     createElement(documentRef, 'div', 'mhr-shell__eyebrow', 'MHR Play'),
-    createElement(documentRef, 'h1', 'mhr-shell__title', 'Public beta runtime shell'),
+    createElement(documentRef, 'h1', 'mhr-shell__title', 'Runtime shell'),
     createElement(
       documentRef,
       'p',
       'mhr-shell__subtitle',
-      'This shell now runs live worker/wasm outputs and keeps the host contract narrow enough for standalone and embed use.',
+      'This shell runs live worker/wasm outputs while keeping the host contract narrow enough for standalone and embed use.',
     ),
   );
 

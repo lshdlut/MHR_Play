@@ -120,7 +120,7 @@ const handlers = {
     runtime.initialized = true;
     runtime.runtimeConfig = payload.runtimeConfig || null;
     post('ready', {
-      contractVersion: 'draft',
+      contractVersion: 'v1',
       capabilities: {
         lifecycle: true,
         assetLoading: true,

@@ -158,11 +158,11 @@ The mounted host surface is formal and versioned. The current minimum API is:
 Embedding is allowed to depend on this surface, not on ad hoc globals or
 internal module imports.
 
-## Public Beta Surfaces
+## Public Site Surfaces
 
-- `index.html`: standalone public beta shell that auto-loads the tracked demo bundle
+- `index.html`: standalone shell that auto-loads the tracked demo bundle
 - `embed.html`: explicit host-mount demo that exercises the stable embed contract
-- `dist/public_beta/`: export target for local release checks and GitHub Pages style deployment
+- `dist/site/`: export target for local release checks and GitHub Pages style deployment
 
 ## Architectural Invariants
 
