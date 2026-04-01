@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="mhr_stage">
+  <compiler angle="radian" coordinate="local"/>
+  <option timestep="0.01" gravity="0 0 0"/>
+
+  <visual>
+    <headlight ambient="0.48 0.48 0.48" diffuse="0.62 0.62 0.62" specular="0 0 0"/>
+    <map znear="0.01" zfar="80"/>
+    <rgba haze="0.12 0.15 0.20 1"/>
+  </visual>
+
+  <asset>
+    <texture
+      type="skybox"
+      builtin="gradient"
+      rgb1="0.12 0.16 0.22"
+      rgb2="0.60 0.72 0.88"
+      width="512"
+      height="3072"/>
+    <material
+      name="ground_mat"
+      rgba="1 1 1 1"
+      texrepeat="18 18"
+      reflectance="0.0"
+      shininess="0.0"
+      specular="0.0"/>
+  </asset>
+
+  <worldbody>
+    <light directional="true" diffuse="0.60 0.60 0.60" specular="0 0 0" pos="0 -4 6" dir="0 0 -1"/>
+    <light directional="true" diffuse="0.18 0.20 0.22" specular="0 0 0" pos="-3 3 5" dir="0 0 -1"/>
+    <camera name="free" pos="2.8 -3.8 1.9" xyaxes="1 0 0 0 0 1"/>
+    <geom name="ground" type="plane" size="0 0 0.05" material="ground_mat" condim="3"/>
+  </worldbody>
+</mujoco>

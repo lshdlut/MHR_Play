@@ -7,14 +7,15 @@
   "license": "UNLICENSED",
   "scripts": {
     "dev": "python tools/dev_server.py --root . --port 8000",
+    "play:dev": "powershell -ExecutionPolicy Bypass -File .\\mjwp_inject\\run.ps1 -PlaySrc ..\\mujoco-wasm-play",
     "generate:protocol": "python tools/run_node.py tools/generate_worker_protocol.mjs",
     "ci:guard": "python tools/run_node.py tools/check_module_boundaries.mjs",
     "test": "python tools/run_node.py --test tests/tooling/repo_contracts.test.mjs tests/tooling/entry_boundary.test.mjs tests/tooling/runtime_config.test.mjs tests/tooling/asset_bundle_loader.test.mjs tests/tooling/asset_preprocess.test.mjs",
     "build:native": "python tools/build_native.py --print-lib",
     "build:demo-bundle": "python tools/build_demo_bundle.py",
     "build:wasm": "python tools/build_wasm_runtime.py",
-    "export:beta": "python tools/export_public_beta.py",
-    "build:beta": "python tools/build_demo_bundle.py && python tools/build_wasm_runtime.py && python tools/export_public_beta.py",
+    "export:site": "python tools/export_site.py",
+    "build:site": "python tools/build_demo_bundle.py && python tools/build_wasm_runtime.py && python tools/export_site.py",
     "test:official-assets": "python tools/run_node.py --test tests/tooling/official_reference_smoke.test.mjs",
     "test:native-smoke": "python tools/run_node.py --test tests/tooling/native_reference_smoke.test.mjs",
     "test:browser-smoke": "python tools/browser_smoke.py http://127.0.0.1:8000",
@@ -23,6 +24,6 @@
     "parity:native": "python tools/run_python.py tools/mhr_native_harness.py --manifest local_tools/official_bundle/manifest.json --oracle-root local_tools/mhr_parity/ref_py --out local_tools/mhr_parity/ref_native --rebuild",
     "parity:ablation": "python tools/run_python.py tools/mhr_parity_ablation.py --manifest local_tools/official_bundle/manifest.json --out local_tools/mhr_parity/ablation_report.json",
     "parity:native-stages": "python tools/run_python.py tools/mhr_native_stage_probe.py --manifest local_tools/official_bundle/manifest.json --out local_tools/mhr_parity/native_stage_probe --rebuild",
-    "release:check": "python tools/release_check.py"
+    "release:check": "python tools/site_release_check.py"
   }
 }

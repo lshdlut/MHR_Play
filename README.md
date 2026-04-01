@@ -1,7 +1,7 @@
 # MHR Play
 
 `MHR Play` is an embeddable `front-end + worker` application for MHR-focused
-runtime exploration. The repository now includes a public-beta-ready standalone
+runtime exploration. The repository now includes a standalone
 shell, a stable embed surface, a processed demo bundle, a wasm worker runtime,
 and an official TorchScript/native reference lane for parity work.
 
@@ -23,16 +23,19 @@ and an official TorchScript/native reference lane for parity work.
   golden cases through a reference-only exact-kernel path.
 - The standalone shell auto-loads the tracked demo bundle and evaluates it
   through the worker-owned wasm runtime.
-- `index.html` and `embed.html` are the two public beta surfaces:
+- `index.html` and `embed.html` are the two public surfaces:
   standalone GitHub Pages style delivery and explicit host embedding.
+- `mjwp_inject/` owns the Play-hosted downstream MHR surface and assembles a
+  disposable `mujoco-wasm-play` clone instead of modifying the sibling Play
+  working tree directly.
 
 ## Layout
 
 - `app/`: bootstrap, shell, public mount surface, host contract
 - `backend/`: main-thread worker proxy and latest evaluation owner
 - `core/`: runtime config, logging helpers, bundle validation
-- `renderer/`: minimal beta viewer for skin and skeleton consumption
-- `ui/`: UI-only store and beta control surface
+- `renderer/`: minimal viewer for skin and skeleton consumption
+- `ui/`: UI-only store and control surface
 - `worker/`: generated protocol glue and wasm runtime owner
 - `tools/`: dev server, protocol generator, boundary checker, preprocessing,
   oracle generation, demo-bundle/export/release helpers
@@ -40,9 +43,17 @@ and an official TorchScript/native reference lane for parity work.
 - `doc/`: product, architecture, parity, asset, and integration contracts
 - `native/`: native reference runtime core and C ABI for parity work
 
+## Repository Hygiene
+
+- `demo_assets/` is tracked because it is part of the shipped standalone site surface.
+- `dist/`, `local_tools/`, and `tmp/` are local-only output areas and stay ignored.
+- Local machine coordination and config stay untracked under `.agents_arena/`,
+  `AGENTS.md`, and `.repo_local_config.json`.
+
 ## Commands
 
 - `npm run dev`
+- `npm run play:dev`
 - `npm run generate:protocol`
 - `npm run ci:guard`
 - `npm run test`
@@ -51,8 +62,8 @@ and an official TorchScript/native reference lane for parity work.
 - `npm run build:native`
 - `npm run build:demo-bundle`
 - `npm run build:wasm`
-- `npm run build:beta`
-- `npm run export:beta`
+- `npm run build:site`
+- `npm run export:site`
 - `npm run test:native-smoke`
 - `npm run test:browser-smoke`
 - `npm run parity:native`
