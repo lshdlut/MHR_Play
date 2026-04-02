@@ -32,6 +32,10 @@ const FIXED_SLOT_KEYS = Object.freeze([
 const FIXED_SLOT_SLIDER_MIN = -Math.PI;
 const FIXED_SLOT_SLIDER_MAX = Math.PI;
 const FIXED_SLOT_SLIDER_STEP = 0.01;
+const UI_BLEND_ABS_RANGE = 6.0;
+const UI_EXPRESSION_ABS_RANGE = 2.0;
+const UI_ROOT_TRANSLATION_ABS_RANGE = 30.0;
+const UI_ROOT_ROTATION_ABS_RANGE = Math.PI * 3;
 
 const EMPTY_STATE = Object.freeze({
   root: {},
@@ -235,6 +239,17 @@ function isFixedSlotParameter(parameter) {
   return Number.isFinite(min) && Number.isFinite(max) && min === max;
 }
 
+function isRootTranslationParameter(parameter) {
+  if (String(parameter?.stateSection || '') !== 'root') {
+    return false;
+  }
+  const key = String(parameter?.key || '').trim();
+  return (
+    /^root_t[xyz]$/i.test(key)
+    || /^translate[xyz]$/i.test(key)
+  );
+}
+
 function getParameterDefaultValue(parameter) {
   const numeric = Number(parameter?.default);
   return Number.isFinite(numeric) ? numeric : 0;
@@ -254,7 +269,41 @@ function clampToParameter(parameter, value) {
   if (isFixedSlotParameter(parameter)) {
     return Number(value);
   }
-  return clampToBounds(value, Number(parameter?.min), Number(parameter?.max));
+  const { min, max } = getSliderBounds(parameter);
+  return clampToBounds(value, min, max);
+}
+
+function getUiWorkingBounds(parameter) {
+  const stateSection = String(parameter?.stateSection || '').trim();
+  if (stateSection === 'surfaceShape') {
+    return {
+      min: -UI_BLEND_ABS_RANGE,
+      max: UI_BLEND_ABS_RANGE,
+      step: 0.01,
+    };
+  }
+  if (stateSection === 'expression') {
+    return {
+      min: -UI_EXPRESSION_ABS_RANGE,
+      max: UI_EXPRESSION_ABS_RANGE,
+      step: 0.01,
+    };
+  }
+  if (stateSection === 'root') {
+    if (isRootTranslationParameter(parameter)) {
+      return {
+        min: -UI_ROOT_TRANSLATION_ABS_RANGE,
+        max: UI_ROOT_TRANSLATION_ABS_RANGE,
+        step: 0.05,
+      };
+    }
+    return {
+      min: -UI_ROOT_ROTATION_ABS_RANGE,
+      max: UI_ROOT_ROTATION_ABS_RANGE,
+      step: 0.01,
+    };
+  }
+  return null;
 }
 
 function getSliderBounds(parameter) {
@@ -264,6 +313,10 @@ function getSliderBounds(parameter) {
       max: FIXED_SLOT_SLIDER_MAX,
       step: FIXED_SLOT_SLIDER_STEP,
     };
+  }
+  const working = getUiWorkingBounds(parameter);
+  if (working) {
+    return working;
   }
   const min = Number.isFinite(Number(parameter?.min)) ? Number(parameter.min) : -1;
   const max = Number.isFinite(Number(parameter?.max)) ? Number(parameter.max) : 1;

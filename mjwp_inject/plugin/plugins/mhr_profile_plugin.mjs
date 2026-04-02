@@ -2123,6 +2123,7 @@ export async function registerPlayPlugin(host) {
   function findRowState(rowKey) {
     return rowRegistry.scale.get(rowKey)
       || rowRegistry.blend.get(rowKey)
+      || rowRegistry.expression.get(rowKey)
       || rowRegistry.fixed.get(rowKey)
       || rowRegistry.pose.get(rowKey)
       || null;

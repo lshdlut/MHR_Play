@@ -6,7 +6,7 @@ param(
     [string]$PlayRef = "",
 
     [Parameter(Mandatory = $false)]
-    [string]$WorkDir = (Join-Path $env:TEMP "mhr_mjwp_inject"),
+    [string]$WorkDir = (Join-Path ([System.IO.Path]::GetTempPath()) "mhr_mjwp_inject"),
 
     [Parameter(Mandatory = $false)]
     [int]$Port = 4173,
@@ -26,6 +26,14 @@ Set-StrictMode -Version Latest
 
 function Resolve-AbsPath([string]$PathLike) {
     return (Resolve-Path -LiteralPath $PathLike).Path
+}
+
+function Get-TempRoot() {
+    $tempRoot = [System.IO.Path]::GetTempPath()
+    if (-not $tempRoot) {
+        throw "Unable to resolve temp root."
+    }
+    return $tempRoot.TrimEnd('\', '/')
 }
 
 function Resolve-PythonExe() {
@@ -73,8 +81,9 @@ function Ensure-LodArtifacts([string]$RepoRoot, [string]$PythonExe, [int]$Target
 }
 
 function Copy-TreeIntoRoot([string]$SourceRoot, [string]$DestinationRoot) {
+    $copiedFiles = @()
     if (-not (Test-Path -LiteralPath $SourceRoot)) {
-        return
+        return $copiedFiles
     }
     Get-ChildItem -LiteralPath $SourceRoot -Recurse -Force | ForEach-Object {
         $relative = $_.FullName.Substring($SourceRoot.Length).TrimStart('\', '/')
@@ -89,7 +98,9 @@ function Copy-TreeIntoRoot([string]$SourceRoot, [string]$DestinationRoot) {
             New-Item -ItemType Directory -Force -Path $targetParent | Out-Null
         }
         Copy-Item -LiteralPath $_.FullName -Destination $target -Force
+        $copiedFiles += $relative.Replace('\', '/')
     }
+    return $copiedFiles
 }
 
 function Copy-FileIntoRoot([string]$SourceFile, [string]$DestinationFile) {
@@ -113,6 +124,110 @@ function Apply-PatchSet([string]$PatchRoot, [string]$DestinationRoot) {
         }
     }
     return $patches
+}
+
+function Remove-InjectedFiles([string]$CloneRoot, [object]$Meta) {
+    if (-not $Meta) {
+        return
+    }
+    $copiedFiles = @($Meta.copiedFiles)
+    if ($copiedFiles.Count -eq 0) {
+        return
+    }
+
+    $parentDirs = New-Object System.Collections.Generic.List[string]
+    foreach ($relative in $copiedFiles) {
+        if (-not $relative) {
+            continue
+        }
+        $normalized = $relative.Replace('/', '\')
+        $target = Join-Path $CloneRoot $normalized
+        if (Test-Path -LiteralPath $target -PathType Leaf) {
+            Remove-Item -LiteralPath $target -Force
+        }
+        $parent = Split-Path -Parent $target
+        while ($parent -and $parent.StartsWith($CloneRoot, [System.StringComparison]::OrdinalIgnoreCase) -and ($parent.Length -gt $CloneRoot.Length)) {
+            $parentDirs.Add($parent)
+            $parent = Split-Path -Parent $parent
+        }
+    }
+
+    $parentDirs |
+        Sort-Object Length -Descending -Unique |
+        ForEach-Object {
+            if ((Test-Path -LiteralPath $_ -PathType Container) -and -not (Get-ChildItem -LiteralPath $_ -Force -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+                Remove-Item -LiteralPath $_ -Force
+            }
+        }
+}
+
+function Read-InjectMeta([string]$MetaPath) {
+    if (-not (Test-Path -LiteralPath $MetaPath)) {
+        return $null
+    }
+    try {
+        return (Get-Content -LiteralPath $MetaPath -Raw | ConvertFrom-Json)
+    } catch {
+        Write-Warning "[mjwp_inject] failed to parse existing meta file; continuing without reuse cleanup."
+        return $null
+    }
+}
+
+function Get-ActiveInjectWorkDirs() {
+    $activeDirs = @()
+    $tempRoot = Get-TempRoot
+    $pattern = '(?i)' + [regex]::Escape($tempRoot + '\') + 'mhr_mjwp_inject[^" ]*'
+
+    foreach ($process in (Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+        $commandLine = $process.CommandLine
+        if (-not $commandLine) {
+            continue
+        }
+        foreach ($match in [regex]::Matches($commandLine, $pattern)) {
+            $candidate = $match.Value
+            if (Test-Path -LiteralPath $candidate -PathType Container) {
+                $resolved = (Resolve-Path -LiteralPath $candidate).Path
+                if ($resolved -and -not ($activeDirs -contains $resolved)) {
+                    $activeDirs += $resolved
+                }
+            }
+        }
+    }
+    return $activeDirs
+}
+
+function Prune-TempInjectWorkDirs([string]$CurrentWorkDir) {
+    $tempRoot = Get-TempRoot
+    if (-not $CurrentWorkDir) {
+        return
+    }
+    if (-not $CurrentWorkDir.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return
+    }
+
+    $defaultWorkDir = Join-Path $tempRoot 'mhr_mjwp_inject'
+    $activeDirs = Get-ActiveInjectWorkDirs
+    $allDirs = @(Get-ChildItem -LiteralPath $tempRoot -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'mhr_mjwp_inject*' })
+    $removed = 0
+
+    foreach ($dir in $allDirs) {
+        $resolvedDir = (Resolve-Path -LiteralPath $dir.FullName).Path
+        if ($resolvedDir -eq $CurrentWorkDir) {
+            continue
+        }
+        if ($resolvedDir -eq $defaultWorkDir) {
+            continue
+        }
+        if ($activeDirs -contains $resolvedDir) {
+            continue
+        }
+        Remove-Item -LiteralPath $resolvedDir -Recurse -Force
+        $removed += 1
+    }
+
+    if ($removed -gt 0) {
+        Write-Host "[mjwp_inject] pruned $removed stale temp work directories."
+    }
 }
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -142,6 +257,8 @@ if (-not (Test-Path -LiteralPath (Join-Path $playSrcAbs ".git"))) {
 foreach ($supportedLod in 0..6) {
     Ensure-LodArtifacts -RepoRoot $repoRoot -PythonExe $pythonExe -TargetLod $supportedLod
 }
+
+Prune-TempInjectWorkDirs -CurrentWorkDir $workDirAbs
 
 $needFreshClone = $Clean.IsPresent -or (-not (Test-Path -LiteralPath (Join-Path $playClone ".git")))
 if ($needFreshClone -and (Test-Path -LiteralPath $playClone)) {
@@ -181,11 +298,15 @@ if ($PlayRef) {
     }
 }
 
+$existingMeta = Read-InjectMeta -MetaPath $metaPath
+Remove-InjectedFiles -CloneRoot $playClone -Meta $existingMeta
+
 $patches = Apply-PatchSet $patchRoot $playClone
 
 Write-Host "[mjwp_inject] copying MHR plugin and page files"
-Copy-TreeIntoRoot $pluginRoot $playClone
-Copy-TreeIntoRoot $siteRoot $playClone
+$copiedFiles = @()
+$copiedFiles += Copy-TreeIntoRoot $pluginRoot $playClone
+$copiedFiles += Copy-TreeIntoRoot $siteRoot $playClone
 
 $meta = @{
     repoRoot = $repoRoot
@@ -194,7 +315,7 @@ $meta = @{
     lod = $Lod
     appliedAt = (Get-Date).ToString("o")
     patchCount = @($patches).Count
-    sharedCopies = @()
+    copiedFiles = @($copiedFiles | Sort-Object -Unique)
 }
 $meta | ConvertTo-Json | Set-Content -LiteralPath $metaPath -Encoding UTF8
 
