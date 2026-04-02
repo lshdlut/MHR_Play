@@ -109,6 +109,7 @@ const runtime = {
     bundleId: '',
     manifestUrl: '',
     assetBaseUrl: '',
+    lod: null,
     manifest: null,
     chunkMap: null,
     topology: null,
@@ -476,6 +477,7 @@ function buildEvaluation(compareMode, result, debug, influencePreview = null) {
   runtime.evaluationSeq += 1;
   const parameterCount = manifest?.summary?.parameterCount || 0;
   const counts = runtime.assets.parameterMetadata?.counts || {};
+  const lod = Number.isInteger(runtime.assets.lod) ? runtime.assets.lod : null;
 
   return {
     seq: runtime.evaluationSeq,
@@ -497,6 +499,7 @@ function buildEvaluation(compareMode, result, debug, influencePreview = null) {
       stateRevision: runtime.revision,
       parameterCount,
       manifestUrl: runtime.assets.manifestUrl || '',
+      lod,
       selectedOutputs: ['vertices', 'skeletonState', 'derivedValues'],
       rootTranslation: Array.from(result.derived.slice(0, 3)),
       firstVertex: Array.from(result.derived.slice(3, 6)),
@@ -677,6 +680,7 @@ const handlers = {
       bundleId: manifest.irId,
       manifestUrl: manifest.manifestUrl,
       assetBaseUrl: manifest.assetBaseUrl,
+      lod: Number(manifest.lod),
       manifest,
       chunkMap,
       topology,
@@ -690,6 +694,7 @@ const handlers = {
       bundleId: runtime.assets.bundleId,
       manifestUrl: runtime.assets.manifestUrl,
       assetBaseUrl: runtime.assets.assetBaseUrl,
+      lod: runtime.assets.lod,
       parameterCount: manifest.summary.parameterCount,
       counts,
       topology,

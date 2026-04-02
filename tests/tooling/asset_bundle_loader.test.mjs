@@ -55,6 +55,7 @@ test('processed bundle loader resolves manifest and chunk URLs', async () => {
   );
 
   assert.equal(loaded.bundleId, fixtureManifest.bundleId);
+  assert.equal(loaded.lod, fixtureManifest.lod);
   assert.equal(loaded.summary.chunkCount, 16);
   assert.equal(
     loaded.chunkMap.meshTopology.url,
@@ -96,6 +97,7 @@ test('runtime IR loader resolves manifest and chunk URLs', async () => {
     );
 
     assert.equal(loaded.irId, runtimeIrManifest.irId);
+    assert.equal(loaded.lod, runtimeIrManifest.lod);
     assert.equal(loaded.summary.chunkCount, runtimeIrManifest.chunks.length);
     assert.equal(
       loaded.chunkMap.parameterTransformRowPtr.url,
@@ -119,6 +121,34 @@ test('runtime IR loader resolves manifest and chunk URLs', async () => {
     });
     assert.equal(chunkMap.baseMesh.array.length > 0, true);
     assert.equal(chunkMap.parameterTransformRowPtr.array.length > 0, true);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('runtime IR loader rejects mismatched requested lod', async () => {
+  const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'mhr-runtime-ir-lod-'));
+  const outDir = path.join(tempRoot, 'ir');
+
+  try {
+    runRuntimeIrCompiler(outDir);
+    const runtimeIrManifest = JSON.parse(readFileSync(path.join(outDir, 'manifest.json'), 'utf8'));
+    await assert.rejects(
+      bundleModule.loadRuntimeIrManifest(
+        {
+          manifestUrl: 'https://example.test/runtime-ir/manifest.json',
+          assetBaseUrl: 'https://example.test/runtime-ir/',
+          lod: runtimeIrManifest.lod + 1,
+        },
+        {
+          fetchImpl: async () => ({
+            ok: true,
+            json: async () => runtimeIrManifest,
+          }),
+        },
+      ),
+      /lod mismatch/i,
+    );
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

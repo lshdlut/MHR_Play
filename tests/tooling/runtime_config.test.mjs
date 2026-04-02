@@ -13,6 +13,7 @@ test('normalizeAssetConfig absolutizes manifest and asset base URLs against the 
     {
       manifestUrl: './bundles/lod1/manifest.json',
       assetBaseUrl: './bundles/lod1/',
+      lod: '1',
     },
     {
       location: {
@@ -23,11 +24,13 @@ test('normalizeAssetConfig absolutizes manifest and asset base URLs against the 
 
   assert.equal(normalized.manifestUrl, 'http://127.0.0.1:4173/bundles/lod1/manifest.json');
   assert.equal(normalized.assetBaseUrl, 'http://127.0.0.1:4173/bundles/lod1/');
+  assert.equal(normalized.lod, 1);
 });
 
 test('normalizeAssetConfig preserves empty values and returns a frozen object', () => {
   const normalized = runtimeConfigModule.normalizeAssetConfig({}, { location: { href: 'http://127.0.0.1:4173/mhr.html' } });
   assert.equal(normalized.manifestUrl, '');
   assert.equal(normalized.assetBaseUrl, '');
+  assert.equal(normalized.lod, null);
   assert.equal(Object.isFrozen(normalized), true);
 });

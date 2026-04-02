@@ -298,6 +298,7 @@ export async function createBackend({ runtimeConfig = null, assetConfig = null }
           bundleId: payload.bundleId,
           manifestUrl: payload.manifestUrl || '',
           assetBaseUrl: payload.assetBaseUrl || '',
+          lod: Number.isInteger(payload.lod) ? payload.lod : null,
           parameterCount: payload.parameterCount || 0,
           counts: payload.counts || null,
           topology: payload.topology || null,
@@ -578,7 +579,9 @@ export async function createBackend({ runtimeConfig = null, assetConfig = null }
     getStrictReport: () => null,
     getInitialModelInfo: () => ({
       file: currentAssetConfig.manifestUrl || null,
-      label: 'MHR profile',
+      label: Number.isInteger(currentAssetConfig.lod)
+        ? `MHR profile (lod${currentAssetConfig.lod})`
+        : 'MHR profile',
     }),
   };
 }

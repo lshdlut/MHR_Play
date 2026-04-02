@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 
 from build_native import configure_and_build, default_build_dir, default_generator, locate_native_library
-from local_config import repo_root_from_here
+from local_config import repo_root_from_here, resolve_exact_runtime_python_executable
 from mhr_reference import build_raw_inputs, load_case_manifest
 
 
@@ -386,7 +386,7 @@ def run_case(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", default="local_tools/official_bundle/manifest.json", help="processed bundle manifest")
+    parser.add_argument("--manifest", default="local_tools/official_bundle/lod1/manifest.json", help="processed bundle manifest")
     parser.add_argument("--cases", default="tests/golden_cases/manifest.json", help="golden case manifest")
     parser.add_argument("--out", default="local_tools/mhr_parity/ref_native", help="output directory")
     parser.add_argument("--oracle-root", help="directory containing Python oracle artifacts")
@@ -397,6 +397,7 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = repo_root_from_here(__file__)
+    os.environ["PYTHON_EXE"] = resolve_exact_runtime_python_executable(repo_root)
     manifest_path = Path(args.manifest).resolve()
     case_manifest_path = Path(args.cases).resolve()
     out_root = Path(args.out).resolve()
@@ -416,6 +417,7 @@ def main() -> int:
 
     manifest, binding = load_manifest_arrays(manifest_path)
     parameter_metadata = manifest["parameterMetadata"]
+    lod = int(manifest.get("lod", 1))
 
     runtime = ctypes.c_void_p(lib.mhr_runtime_create())
     if not runtime:
@@ -466,6 +468,7 @@ def main() -> int:
         report = {
             "libraryPath": str(library_path),
             "manifest": str(manifest_path),
+            "lod": lod,
             "cases": [],
             "discreteChecks": discrete_checks,
         }

@@ -302,11 +302,13 @@ def build_ir_manifest(
     analysis: dict[str, Any],
     chunks: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    lod = int(source_manifest.get("lod", 1))
     source = {
         "bundleId": source_manifest["bundleId"],
         "bundleSchema": source_manifest["bundleSchema"],
         "sourceId": source_manifest["sourceId"],
         "modelVersion": source_manifest["modelVersion"],
+        "lod": lod,
         "bundleFingerprint": source_manifest["bundleFingerprint"],
     }
     payload = {
@@ -322,6 +324,7 @@ def build_ir_manifest(
         "bundleSchema": "mhr-runtime-ir/v1",
         "schemaVersion": 1,
         "irId": f"{source_manifest['bundleId']}-runtime-ir",
+        "lod": lod,
         **payload,
         "irFingerprint": f"sha256:{ir_fingerprint}",
     }
@@ -573,6 +576,7 @@ def main() -> None:
             {
                 "bundleSchema": manifest["bundleSchema"],
                 "irId": manifest["irId"],
+                "lod": manifest["lod"],
                 "counts": manifest["counts"],
                 "layout": manifest["layout"],
             },

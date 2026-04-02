@@ -10,10 +10,11 @@ import numpy as np
 from local_config import load_local_config, repo_root_from_here, resolve_mhr_asset_root
 from mhr_reference import (
     OFFICIAL_ORACLE_KIND,
+    SUPPORTED_ORACLE_KINDS,
     build_parameter_metadata,
     evaluate_state_patch,
     load_case_manifest,
-    load_torchscript_model,
+    load_official_model,
 )
 
 
@@ -40,6 +41,13 @@ def main() -> int:
         help="output directory for oracle artifacts",
     )
     parser.add_argument("--asset-root", help="path to official MHR assets")
+    parser.add_argument("--lod", type=int, default=1, help="official MHR LOD for the oracle run")
+    parser.add_argument(
+        "--oracle",
+        choices=SUPPORTED_ORACLE_KINDS,
+        default=OFFICIAL_ORACLE_KIND,
+        help="official oracle route to use",
+    )
     args = parser.parse_args()
 
     repo_root = repo_root_from_here(__file__)
@@ -56,13 +64,14 @@ def main() -> int:
     if not isinstance(cases, list) or not cases:
         raise SystemExit("Golden case manifest requires a non-empty cases list.")
 
-    model = load_torchscript_model(asset_root)
-    parameter_metadata = build_parameter_metadata(model)
+    model = load_official_model(asset_root, lod=args.lod, oracle_kind=args.oracle)
+    parameter_metadata = build_parameter_metadata(model, oracle_kind=args.oracle)
     out_root = Path(args.out).resolve()
     out_root.mkdir(parents=True, exist_ok=True)
 
     report = {
-        "oracle": OFFICIAL_ORACLE_KIND,
+        "oracle": args.oracle,
+        "lod": int(args.lod),
         "assetRoot": str(asset_root),
         "cases": [],
     }

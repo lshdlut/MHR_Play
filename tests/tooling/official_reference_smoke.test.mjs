@@ -36,6 +36,8 @@ test('official oracle and preprocess smoke', async (t) => {
       'tools/mhr_asset_preprocess.py',
       '--source-kind',
       'official',
+      '--lod',
+      '1',
       '--out',
       bundleOutA,
     ]);
@@ -46,6 +48,8 @@ test('official oracle and preprocess smoke', async (t) => {
       'tools/mhr_asset_preprocess.py',
       '--source-kind',
       'official',
+      '--lod',
+      '1',
       '--out',
       bundleOutB,
     ]);
@@ -69,17 +73,23 @@ test('official oracle and preprocess smoke', async (t) => {
       ).href,
     );
     const summary = bundleModule.validateProcessedBundleManifest(manifestA);
+    assert.equal(summary.lod, 1);
     assert.ok(summary.chunkCount >= 10);
     assert.ok(summary.parameterCount >= 300);
 
     const oracleRun = runOptionalPython([
       'tools/run_python.py',
       'tools/mhr_python_oracle.py',
+      '--lod',
+      '1',
       '--out',
       oracleOut,
     ]);
     assert.equal(oracleRun.status, 0, oracleRun.stderr || oracleRun.stdout);
     assert.ok(existsSync(path.join(oracleOut, 'report.json')));
+    const report = JSON.parse(readFileSync(path.join(oracleOut, 'report.json'), 'utf8'));
+    assert.equal(report.lod, 1);
+    assert.equal(report.oracle, 'official-full-cpu');
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

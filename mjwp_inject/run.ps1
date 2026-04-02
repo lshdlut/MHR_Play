@@ -12,6 +12,9 @@ param(
     [int]$Port = 4173,
 
     [Parameter(Mandatory = $false)]
+    [int]$Lod = 1,
+
+    [Parameter(Mandatory = $false)]
     [switch]$NoServe,
 
     [Parameter(Mandatory = $false)]
@@ -82,6 +85,9 @@ function Apply-PatchSet([string]$PatchRoot, [string]$DestinationRoot) {
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw "Required tool not found in PATH: git"
 }
+if ($Lod -lt 0) {
+    throw "Lod must be a non-negative integer."
+}
 
 $pythonExe = Resolve-PythonExe
 $repoRoot = Resolve-AbsPath (Join-Path $PSScriptRoot "..")
@@ -94,15 +100,31 @@ $playClone = Join-Path $workDirAbs "play"
 $metaPath = Join-Path $playClone ".mjwp_inject_meta.json"
 $playParent = Split-Path -Parent $playSrcAbs
 $playForgeRoot = Join-Path $playParent "mujoco-wasm-forge"
-$officialBundleManifest = Join-Path $repoRoot "local_tools\\official_bundle\\manifest.json"
-$officialRuntimeIrDir = Join-Path $repoRoot "local_tools\\official_runtime_ir"
+$officialBundleRoot = Join-Path $repoRoot "local_tools\\official_bundle"
+$officialBundleDir = Join-Path $officialBundleRoot ("lod{0}" -f $Lod)
+$officialBundleManifest = Join-Path $officialBundleDir "manifest.json"
+$officialRuntimeIrRoot = Join-Path $repoRoot "local_tools\\official_runtime_ir"
+$officialRuntimeIrDir = Join-Path $officialRuntimeIrRoot ("lod{0}" -f $Lod)
+$officialRuntimeIrManifest = Join-Path $officialRuntimeIrDir "manifest.json"
 
 if (-not (Test-Path -LiteralPath (Join-Path $playSrcAbs ".git"))) {
     throw "PlaySrc must point to a git checkout: $playSrcAbs"
 }
 
-if ((-not (Test-Path -LiteralPath (Join-Path $officialRuntimeIrDir "manifest.json"))) -and (Test-Path -LiteralPath $officialBundleManifest)) {
-    Write-Host "[mjwp_inject] compiling official runtime IR -> $officialRuntimeIrDir"
+if (-not (Test-Path -LiteralPath $officialBundleManifest)) {
+    Write-Host "[mjwp_inject] preprocessing official bundle for lod$Lod -> $officialBundleDir"
+    if (Test-Path -LiteralPath $officialBundleDir) {
+        Remove-Item -LiteralPath $officialBundleDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $officialBundleDir | Out-Null
+    & $pythonExe (Join-Path $repoRoot "tools\\mhr_asset_preprocess.py") --source-kind official --lod $Lod --out $officialBundleDir
+    if ($LASTEXITCODE -ne 0) {
+        throw "mhr_asset_preprocess.py failed with exit code $LASTEXITCODE"
+    }
+}
+
+if ((-not (Test-Path -LiteralPath $officialRuntimeIrManifest)) -and (Test-Path -LiteralPath $officialBundleManifest)) {
+    Write-Host "[mjwp_inject] compiling official runtime IR for lod$Lod -> $officialRuntimeIrDir"
     if (Test-Path -LiteralPath $officialRuntimeIrDir) {
         Remove-Item -LiteralPath $officialRuntimeIrDir -Recurse -Force
     }
@@ -161,13 +183,14 @@ $meta = @{
     repoRoot = $repoRoot
     playSrc = $playSrcAbs
     playRef = if ($PlayRef) { $PlayRef } else { "" }
+    lod = $Lod
     appliedAt = (Get-Date).ToString("o")
     patchCount = @($patches).Count
     sharedCopies = @()
 }
 $meta | ConvertTo-Json | Set-Content -LiteralPath $metaPath -Encoding UTF8
 
-$url = "http://127.0.0.1:$Port/mhr.html"
+$url = "http://127.0.0.1:$Port/mhr.html?lod=$Lod"
 Write-Host "[mjwp_inject] ready."
 Write-Host "  Play clone:  $playClone"
 Write-Host "  Repo root:   $repoRoot"
@@ -182,7 +205,7 @@ Write-Host "[mjwp_inject] serving play clone on port $Port (Ctrl+C to stop)"
     --root $playClone `
     --repo-root $repoRoot `
     --forge-root $playForgeRoot `
-    --official-root $officialRuntimeIrDir `
+    --official-root $officialRuntimeIrRoot `
     --port $Port
 if ($LASTEXITCODE -ne 0) {
     throw "mjwp_inject/server.py failed with exit code $LASTEXITCODE"

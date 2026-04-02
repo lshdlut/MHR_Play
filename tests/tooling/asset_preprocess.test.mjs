@@ -54,8 +54,11 @@ test('preprocess pipeline is deterministic and manifest-valid', async () => {
     );
     const validated = bundleModule.validateProcessedBundleManifest(manifestA);
     assert.equal(validated.bundleId, 'minimal-human-fixture');
+    assert.equal(validated.lod, 1);
     assert.equal(validated.chunkCount, 16);
     assert.equal(validated.parameterCount, 15);
+    assert.equal(manifestA.lod, 1);
+    assert.equal(manifestB.lod, 1);
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

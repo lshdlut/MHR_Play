@@ -486,6 +486,7 @@ def main() -> int:
     processed_dir = processed_manifest.parent
     processed_manifest_payload = json.loads(processed_manifest.read_text(encoding="utf-8"))
     bundle_id = str(processed_manifest_payload.get("bundleId", processed_manifest.stem))
+    lod = int(processed_manifest_payload.get("lod", 1))
     build_dir = Path(args.build_dir).resolve() if args.build_dir else default_build_dir()
 
     with tempfile.TemporaryDirectory(prefix="mhr-runtime-ir-bench-") as temp_dir:
@@ -512,6 +513,7 @@ def main() -> int:
                     "libraryPath": str(library_path),
                     "manifest": str(processed_manifest),
                     "bundleId": bundle_id,
+                    "lod": lod,
                     "lodTag": infer_lod_tag(bundle_id),
                     "pythonExe": python_executable,
                     "warmup": args.warmup,

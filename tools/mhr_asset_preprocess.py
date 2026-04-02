@@ -15,7 +15,12 @@ from local_config import (
     resolve_mhr_asset_root,
     resolve_mhr_reference_root,
 )
-from mhr_reference import OFFICIAL_ORACLE_KIND, build_parameter_metadata, import_torch, load_torchscript_model
+from mhr_reference import (
+    OFFICIAL_ORACLE_KIND,
+    build_parameter_metadata,
+    import_torch,
+    load_official_full_model,
+)
 
 
 FIXTURE_REQUIRED_ARRAY_KEYS = (
@@ -87,6 +92,7 @@ def build_manifest(
     bundle_id: str,
     source_id: str,
     model_version: str,
+    lod: int,
     parameter_metadata: dict[str, Any],
     chunks: list[dict[str, Any]],
     bundle_profile: str,
@@ -96,6 +102,7 @@ def build_manifest(
             "bundleProfile": bundle_profile,
             "sourceId": source_id,
             "modelVersion": model_version,
+            "lod": int(lod),
             "parameterMetadata": parameter_metadata,
             "chunks": chunks,
         }
@@ -108,6 +115,7 @@ def build_manifest(
         "bundleId": bundle_id,
         "sourceId": source_id,
         "modelVersion": model_version,
+        "lod": int(lod),
         "bundleFingerprint": f"sha256:{bundle_fingerprint}",
         "parameterMetadata": parameter_metadata,
         "chunks": chunks,
@@ -176,6 +184,7 @@ def preprocess_fixture(source_path: Path, out_dir: Path) -> dict[str, Any]:
         bundle_id=source["bundleId"],
         source_id=source["sourceId"],
         model_version=source["modelVersion"],
+        lod=int(source.get("lod", 1)),
         parameter_metadata=source["parameterMetadata"],
         chunks=chunks,
         bundle_profile="fixture",
@@ -183,23 +192,19 @@ def preprocess_fixture(source_path: Path, out_dir: Path) -> dict[str, Any]:
 
 
 def preprocess_official(asset_root: Path, out_dir: Path, lod: int) -> dict[str, Any]:
-    if lod != 1:
-        raise ValueError("Official TorchScript preprocessing currently supports LOD 1 only.")
-
     torch = import_torch()
-    model = load_torchscript_model(asset_root)
-    parameter_metadata = build_parameter_metadata(model)
+    model = load_official_full_model(asset_root, lod=lod)
+    parameter_metadata = build_parameter_metadata(model, oracle_kind=OFFICIAL_ORACLE_KIND)
     counts = parameter_metadata["counts"]
     model_parameter_count = counts["modelParameterCount"]
     identity_count = counts["identityCount"]
     expression_count = counts["expressionCount"]
 
     faces = model.character_torch.mesh.faces.detach().cpu().numpy().astype(np.uint32)
-    skinning_indices, skinning_weights = model.get_lbsw()
-    skinning_indices_np = skinning_indices.detach().cpu().numpy().astype(np.uint32)
-    skinning_weights_np = skinning_weights.detach().cpu().numpy().astype(np.float32)
+    skinning_indices_np = np.asarray(model.character.skin_weights.index, dtype=np.uint32)
+    skinning_weights_np = np.asarray(model.character.skin_weights.weight, dtype=np.float32)
     zero_model_parameters = torch.zeros(
-        (1, model_parameter_count + identity_count),
+        (1, model_parameter_count + identity_count + expression_count),
         dtype=torch.float32,
     )
     bind_pose = (
@@ -237,7 +242,16 @@ def preprocess_official(asset_root: Path, out_dir: Path, lod: int) -> dict[str, 
         .numpy()
         .astype(np.float32)
     )
-    parameter_limits = model.get_parameter_limits().detach().cpu().numpy().astype(np.float32)
+    parameter_limit_min, parameter_limit_max = model.character.model_parameter_limits
+    parameter_limits = np.ascontiguousarray(
+        np.stack(
+            [
+                np.asarray(parameter_limit_min, dtype=np.float32).reshape(-1),
+                np.asarray(parameter_limit_max, dtype=np.float32).reshape(-1),
+            ],
+            axis=1,
+        )
+    )
     parameter_mask_pose = (
         model.character_torch.parameter_transform.pose_parameters.detach()
         .cpu()
@@ -257,13 +271,16 @@ def preprocess_official(asset_root: Path, out_dir: Path, lod: int) -> dict[str, 
         .astype(np.uint8)
     )
     base_shape = model.character_torch.blend_shape.base_shape.detach().cpu().numpy().astype(np.float32)
-    identity_shapes = model.character_torch.blend_shape.shape_vectors.detach().cpu().numpy().astype(np.float32)
-    expression_shapes = model.face_expressions_model.shape_vectors.detach().cpu().numpy().astype(np.float32)
+    all_blend_shapes = model.character_torch.blend_shape.shape_vectors.detach().cpu().numpy().astype(np.float32)
+    identity_shapes = all_blend_shapes[:identity_count]
+    expression_shapes = all_blend_shapes[identity_count : identity_count + expression_count]
     blendshape_data = np.concatenate(
         [base_shape[None, :, :], identity_shapes, expression_shapes],
         axis=0,
     )
 
+    if model.pose_correctives_model is None:
+        raise RuntimeError("Official full CPU model did not load pose corrective weights.")
     pose_predictor = model.pose_correctives_model.pose_dirs_predictor
     sparse_layer = getattr(pose_predictor, "0")
     dense_layer = getattr(pose_predictor, "2")
@@ -272,7 +289,7 @@ def preprocess_official(asset_root: Path, out_dir: Path, lod: int) -> dict[str, 
     corrective_dense_weights = dense_layer.weight.detach().cpu().numpy().astype(np.float32)
 
     parameter_metadata["oracle"] = OFFICIAL_ORACLE_KIND
-    parameter_metadata["jointNames"] = list(model.get_joint_names())
+    parameter_metadata["jointNames"] = list(model.character.skeleton.joint_names)
     parameter_metadata["counts"].update(
         {
             "vertexCount": int(base_shape.shape[0]),
@@ -329,8 +346,9 @@ def preprocess_official(asset_root: Path, out_dir: Path, lod: int) -> dict[str, 
 
     return build_manifest(
         bundle_id=f"official-mhr-lod{lod}-processed",
-        source_id="official-mhr-torchscript",
-        model_version=f"official-mhr/torchscript-lod{lod}",
+        source_id="official-mhr-full-package",
+        model_version=f"official-mhr/full-package-lod{lod}",
+        lod=lod,
         parameter_metadata=parameter_metadata,
         chunks=chunks,
         bundle_profile="full",

@@ -660,12 +660,13 @@ bool Runtime::validate_bundle(const MhrBundleView& bundle_view) {
   if (parameter_transform.shape[0] != static_cast<uint64_t>(bundle_.joint_count) * 7ULL) {
     return set_error("parameterTransform row count does not match jointCount * 7.");
   }
-  if (parameter_transform.shape[1] <= bundle_.identity_count) {
+  bundle_.parameter_input_count = static_cast<uint32_t>(parameter_transform.shape[1]);
+  if (bundle_.parameter_input_count <= bundle_.identity_count + bundle_.expression_count) {
     return set_error("parameterTransform column count is too small.");
   }
   bundle_.model_parameter_count =
-      static_cast<uint32_t>(parameter_transform.shape[1] - bundle_.identity_count);
-  if (parameter_limits.shape[0] != parameter_transform.shape[1]) {
+      bundle_.parameter_input_count - bundle_.identity_count - bundle_.expression_count;
+  if (parameter_limits.shape[0] != bundle_.parameter_input_count) {
     return set_error("parameterLimits row count must match parameterTransform input width.");
   }
   if (blendshape_data.shape[1] != bundle_.vertex_count) {
@@ -920,7 +921,7 @@ bool Runtime::evaluate() {
   const uint32_t* skinning_index_values = array_data<uint32_t>(skinning_indices);
   const float* inverse_bind_values = array_data<float>(inverse_bind_matrices);
 
-  const uint32_t parameter_input_count = bundle_.model_parameter_count + bundle_.identity_count;
+  const uint32_t parameter_input_count = bundle_.parameter_input_count;
   std::vector<float> parameter_inputs(parameter_input_count, 0.0f);
   std::copy(model_parameters_.begin(), model_parameters_.end(), parameter_inputs.begin());
   std::copy(identity_.begin(), identity_.end(), parameter_inputs.begin() + bundle_.model_parameter_count);
@@ -1119,8 +1120,6 @@ bool Runtime::evaluate() {
     skin_joint_states_[skin_offset + 7] = global_state[7] * inverse_bind_state[7];
   }
 
-  float min_y = std::numeric_limits<float>::infinity();
-  float max_y = -std::numeric_limits<float>::infinity();
   for (uint32_t vertex_index = 0; vertex_index < bundle_.vertex_count; ++vertex_index) {
     const size_t base_offset = static_cast<size_t>(vertex_index) * vertex_stride;
     const Vec3f rest_point{
@@ -1152,17 +1151,23 @@ bool Runtime::evaluate() {
     vertices_[base_offset + 0] = skinned.x;
     vertices_[base_offset + 1] = skinned.y;
     vertices_[base_offset + 2] = skinned.z;
-    min_y = std::min(min_y, skinned.y);
-    max_y = std::max(max_y, skinned.y);
   }
 
-  derived_[0] = skeleton_[0];
-  derived_[1] = skeleton_[1];
-  derived_[2] = skeleton_[2];
+  float min_skeleton_y = std::numeric_limits<float>::infinity();
+  float max_skeleton_y = -std::numeric_limits<float>::infinity();
+  for (uint32_t joint_index = 0; joint_index < bundle_.joint_count; ++joint_index) {
+    const float joint_y = skeleton_[static_cast<size_t>(joint_index) * 8U + 1U];
+    min_skeleton_y = std::min(min_skeleton_y, joint_y);
+    max_skeleton_y = std::max(max_skeleton_y, joint_y);
+  }
+  const size_t root_joint_offset = static_cast<size_t>(bundle_.joint_count > 1U ? 1U : 0U) * 8U;
+  derived_[0] = skeleton_[root_joint_offset + 0U];
+  derived_[1] = skeleton_[root_joint_offset + 1U];
+  derived_[2] = skeleton_[root_joint_offset + 2U];
   derived_[3] = vertices_[0];
   derived_[4] = vertices_[1];
   derived_[5] = vertices_[2];
-  derived_[6] = max_y - min_y;
+  derived_[6] = max_skeleton_y - min_skeleton_y;
   evaluated_ = true;
   last_error_.clear();
   debug_timing_.evaluate_core_ms = elapsed_ms(evaluate_start, SteadyClock::now());

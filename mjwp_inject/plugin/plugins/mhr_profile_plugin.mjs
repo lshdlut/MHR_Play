@@ -115,12 +115,18 @@ function isDebugTraceEnabled() {
 function resolveMhrAssetConfig(target = globalThis) {
   const manifestUrl = String(target?.PLAY_MHR_MANIFEST_URL || '').trim();
   const assetBaseUrl = String(target?.PLAY_MHR_ASSET_BASE_URL || '').trim();
+  const lodValue = target?.PLAY_MHR_LOD;
+  const lod = lodValue == null || lodValue === '' ? null : Number(lodValue);
   if (!manifestUrl) {
     throw new Error('MHR Play page must set PLAY_MHR_MANIFEST_URL before loading the plugin.');
+  }
+  if (lod != null && (!Number.isInteger(lod) || lod < 0)) {
+    throw new Error(`MHR Play page must set PLAY_MHR_LOD to a non-negative integer, got ${String(lodValue)}.`);
   }
   return {
     manifestUrl,
     assetBaseUrl,
+    ...(lod == null ? {} : { lod }),
   };
 }
 

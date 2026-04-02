@@ -32,6 +32,7 @@ test('runtime IR native smoke', () => {
   const report = JSON.parse(
     (jsonStart >= 0 ? result.stdout.slice(jsonStart + 1) : result.stdout).trim(),
   );
+  assert.equal(report.lod, 1);
   assert.equal(report.counts.vertexCount > 0, true);
   assert.equal(report.counts.jointCount > 0, true);
   assert.equal(Array.isArray(report.firstVertex), true);

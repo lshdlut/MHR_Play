@@ -996,8 +996,8 @@ bool validate_bundle(CompiledModel* model, const MhrBundleView& bundle_view) {
   model->counts.expression_count = static_cast<uint32_t>(expression_basis.shape[0]);
   model->counts.parameter_input_count = static_cast<uint32_t>(parameter_limits.shape[0]);
   model->counts.model_parameter_count =
-      model->counts.parameter_input_count - model->counts.identity_count;
-  if (model->counts.parameter_input_count <= model->counts.identity_count) {
+      model->counts.parameter_input_count - model->counts.identity_count - model->counts.expression_count;
+  if (model->counts.parameter_input_count <= model->counts.identity_count + model->counts.expression_count) {
     return set_error(&model->last_error, "parameterTransform input width is too small.");
   }
   if (base_mesh.shape[0] != skinning_weights.shape[0] ||
@@ -1626,8 +1626,6 @@ int mhr_forward(const MhrModel* model, MhrData* data, uint32_t flags) {
     data->impl.skin_transforms[skin_offset + 7] = global_state[7] * inverse_bind_state[7];
   }
 
-  float min_y = std::numeric_limits<float>::infinity();
-  float max_y = -std::numeric_limits<float>::infinity();
   for (uint32_t vertex_index = 0; vertex_index < model->impl.counts.vertex_count; ++vertex_index) {
     const size_t base_offset = static_cast<size_t>(vertex_index) * 3U;
     const Vec3f rest_point{
@@ -1656,18 +1654,25 @@ int mhr_forward(const MhrModel* model, MhrData* data, uint32_t flags) {
     data->impl.output_vertices[base_offset + 0] = skinned.x;
     data->impl.output_vertices[base_offset + 1] = skinned.y;
     data->impl.output_vertices[base_offset + 2] = skinned.z;
-    min_y = std::min(min_y, skinned.y);
-    max_y = std::max(max_y, skinned.y);
   }
 
   if ((flags & MHR_FORWARD_SKIP_DERIVED) == 0U) {
-    data->impl.derived[0] = data->impl.skeleton[0];
-    data->impl.derived[1] = data->impl.skeleton[1];
-    data->impl.derived[2] = data->impl.skeleton[2];
+    float min_skeleton_y = std::numeric_limits<float>::infinity();
+    float max_skeleton_y = -std::numeric_limits<float>::infinity();
+    for (uint32_t joint_index = 0; joint_index < model->impl.counts.joint_count; ++joint_index) {
+      const float joint_y = data->impl.skeleton[static_cast<size_t>(joint_index) * 8U + 1U];
+      min_skeleton_y = std::min(min_skeleton_y, joint_y);
+      max_skeleton_y = std::max(max_skeleton_y, joint_y);
+    }
+    const size_t root_joint_offset =
+        static_cast<size_t>(model->impl.counts.joint_count > 1U ? 1U : 0U) * 8U;
+    data->impl.derived[0] = data->impl.skeleton[root_joint_offset + 0U];
+    data->impl.derived[1] = data->impl.skeleton[root_joint_offset + 1U];
+    data->impl.derived[2] = data->impl.skeleton[root_joint_offset + 2U];
     data->impl.derived[3] = data->impl.output_vertices[0];
     data->impl.derived[4] = data->impl.output_vertices[1];
     data->impl.derived[5] = data->impl.output_vertices[2];
-    data->impl.derived[6] = max_y - min_y;
+    data->impl.derived[6] = max_skeleton_y - min_skeleton_y;
   }
 
   data->impl.evaluated = true;

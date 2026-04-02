@@ -35,6 +35,32 @@ def compare_arrays(reference: np.ndarray, candidate: np.ndarray) -> dict[str, fl
     }
 
 
+def compare_derived_values(reference: dict[str, object], candidate: dict[str, object]) -> dict[str, float]:
+    reference_vector = np.asarray(
+        [
+            float(value)
+            for value in (
+                list(reference.get("rootTranslation", []))
+                + list(reference.get("firstVertex", []))
+                + [reference.get("skeletonExtentY", 0.0)]
+            )
+        ],
+        dtype=np.float32,
+    )
+    candidate_vector = np.asarray(
+        [
+            float(value)
+            for value in (
+                list(candidate.get("rootTranslation", []))
+                + list(candidate.get("firstVertex", []))
+                + [candidate.get("skeletonExtentY", 0.0)]
+            )
+        ],
+        dtype=np.float32,
+    )
+    return compare_arrays(reference_vector, candidate_vector)
+
+
 def load_runtime_counts(
     lib: ctypes.CDLL,
     legacy_runtime: ctypes.c_void_p,
@@ -210,6 +236,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", required=True, help="processed bundle manifest path")
     parser.add_argument("--cases", default="tests/golden_cases/manifest.json")
+    parser.add_argument("--oracle-root", help="optional official oracle output directory")
     parser.add_argument("--build-dir", help="native build dir")
     parser.add_argument("--config", default="Release")
     parser.add_argument("--zero-epsilon", type=float, default=0.0)
@@ -220,8 +247,10 @@ def main() -> int:
     processed_manifest = Path(args.manifest).resolve()
     cases_manifest = Path(args.cases).resolve()
     build_dir = Path(args.build_dir).resolve() if args.build_dir else (Path(tempfile.gettempdir()) / "mhr-runtime-parity-build")
+    oracle_root = Path(args.oracle_root).resolve() if args.oracle_root else None
 
     processed_payload = json.loads(processed_manifest.read_text(encoding="utf-8"))
+    lod = int(processed_payload.get("lod", 1))
     parameter_metadata = processed_payload["parameterMetadata"]
 
     with tempfile.TemporaryDirectory(prefix="mhr-runtime-ir-portable-parity-") as temp_dir:
@@ -237,27 +266,38 @@ def main() -> int:
         lib = ctypes.CDLL(str(library_path))
         bind_api(lib)
 
-        processed_view, _processed_keepalive = build_bundle_view(processed_manifest.parent)
         runtime_ir_view, _runtime_ir_keepalive = build_bundle_view(runtime_ir_dir)
 
-        legacy_runtime = ctypes.c_void_p(lib.mhr_runtime_create())
-        if not legacy_runtime.value:
-            raise RuntimeError("mhr_runtime_create returned null.")
+        legacy_runtime = ctypes.c_void_p()
         portable_model = ctypes.c_void_p(lib.mhr_model_load_ir(ctypes.byref(runtime_ir_view)))
         if not portable_model.value:
             raise RuntimeError("mhr_model_load_ir returned null.")
         portable_data = ctypes.c_void_p()
         try:
-            check_ok(
-                lib.mhr_runtime_load_bundle(legacy_runtime, ctypes.byref(processed_view)),
-                "mhr_runtime_load_bundle",
-                lib.mhr_runtime_last_error(legacy_runtime),
-            )
+            legacy_counts = None
+            if oracle_root is None:
+                processed_view, _processed_keepalive = build_bundle_view(processed_manifest.parent)
+                legacy_runtime = ctypes.c_void_p(lib.mhr_runtime_create())
+                if not legacy_runtime.value:
+                    raise RuntimeError("mhr_runtime_create returned null.")
+                check_ok(
+                    lib.mhr_runtime_load_bundle(legacy_runtime, ctypes.byref(processed_view)),
+                    "mhr_runtime_load_bundle",
+                    lib.mhr_runtime_last_error(legacy_runtime),
+                )
             portable_data = ctypes.c_void_p(lib.mhr_data_create(portable_model))
             if not portable_data.value:
                 raise RuntimeError("mhr_data_create returned null.")
 
-            legacy_counts, portable_counts = load_runtime_counts(lib, legacy_runtime, portable_model)
+            if legacy_runtime.value:
+                legacy_counts, portable_counts = load_runtime_counts(lib, legacy_runtime, portable_model)
+            else:
+                portable_counts = MhrModelCounts()
+                check_ok(
+                    lib.mhr_model_get_counts(portable_model, ctypes.byref(portable_counts)),
+                    "mhr_model_get_counts",
+                    lib.mhr_model_last_error(portable_model),
+                )
             case_manifest = load_case_manifest(cases_manifest)
             cases = case_manifest.get("cases")
             if not isinstance(cases, list) or not cases:
@@ -268,12 +308,6 @@ def main() -> int:
                 case_id = str(entry["id"])
                 case_payload = json.loads((cases_manifest.parent / str(entry["path"])).read_text(encoding="utf-8"))
                 raw_inputs = build_raw_inputs(parameter_metadata, case_payload.get("state", {}))
-                legacy_vertices, legacy_skeleton, legacy_derived = evaluate_legacy(
-                    lib,
-                    legacy_runtime,
-                    legacy_counts,
-                    raw_inputs,
-                )
                 portable_vertices, portable_skeleton, portable_derived = evaluate_portable(
                     lib,
                     portable_model,
@@ -281,12 +315,37 @@ def main() -> int:
                     portable_counts,
                     raw_inputs,
                 )
+                if oracle_root is None:
+                    legacy_vertices, legacy_skeleton, legacy_derived = evaluate_legacy(
+                        lib,
+                        legacy_runtime,
+                        legacy_counts,
+                        raw_inputs,
+                    )
+                    vertex_stats = compare_arrays(legacy_vertices, portable_vertices)
+                    skeleton_stats = compare_arrays(legacy_skeleton, portable_skeleton)
+                    derived_stats = compare_arrays(legacy_derived, portable_derived)
+                else:
+                    oracle_case_dir = oracle_root / case_id
+                    legacy_vertices = np.load(oracle_case_dir / "vertices.npy")
+                    legacy_skeleton = np.load(oracle_case_dir / "skeleton_state.npy")
+                    legacy_derived = json.loads((oracle_case_dir / "derived.json").read_text(encoding="utf-8"))
+                    vertex_stats = compare_arrays(legacy_vertices.reshape(-1), portable_vertices.reshape(-1))
+                    skeleton_stats = compare_arrays(legacy_skeleton.reshape(-1), portable_skeleton.reshape(-1))
+                    derived_stats = compare_derived_values(
+                        legacy_derived,
+                        {
+                            "rootTranslation": [float(value) for value in portable_derived[0:3]],
+                            "firstVertex": [float(value) for value in portable_derived[3:6]],
+                            "skeletonExtentY": float(portable_derived[6]),
+                        },
+                    )
                 report_cases.append(
                     {
                         "id": case_id,
-                        "vertices": compare_arrays(legacy_vertices, portable_vertices),
-                        "skeleton": compare_arrays(legacy_skeleton, portable_skeleton),
-                        "derived": compare_arrays(legacy_derived, portable_derived),
+                        "vertices": vertex_stats,
+                        "skeleton": skeleton_stats,
+                        "derived": derived_stats,
                     }
                 )
 
@@ -296,6 +355,9 @@ def main() -> int:
                         "libraryPath": str(library_path),
                         "manifest": str(processed_manifest),
                         "bundleId": processed_payload.get("bundleId"),
+                        "lod": lod,
+                        "comparisonMode": "official-oracle" if oracle_root is not None else "legacy-runtime",
+                        "oracleRoot": str(oracle_root) if oracle_root is not None else None,
                         "cases": report_cases,
                     },
                     indent=2,
@@ -306,7 +368,8 @@ def main() -> int:
             if portable_data.value:
                 lib.mhr_data_destroy(portable_data)
             lib.mhr_model_destroy(portable_model)
-            lib.mhr_runtime_destroy(legacy_runtime)
+            if legacy_runtime.value:
+                lib.mhr_runtime_destroy(legacy_runtime)
     return 0
 
 

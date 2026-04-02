@@ -149,6 +149,7 @@ def main() -> int:
 
     repo_root = repo_root_from_here(__file__)
     processed_manifest = Path(args.manifest).resolve()
+    processed_payload = json.loads(processed_manifest.read_text(encoding="utf-8"))
     build_dir = Path(args.build_dir).resolve() if args.build_dir else default_build_dir()
 
     with tempfile.TemporaryDirectory(prefix="mhr-runtime-ir-native-") as temp_dir:
@@ -270,6 +271,7 @@ def main() -> int:
                             "poseFeatureCount": counts.pose_feature_count,
                             "hiddenCount": counts.hidden_count,
                         },
+                        "lod": int(processed_payload.get("lod", 1)),
                         "firstVertex": [
                             float(vertices[index]) for index in range(min(3, vertex_count))
                         ],

@@ -62,6 +62,8 @@ export const COMMAND_FIELDS = {
     ],
     "optional": [
       "compareMode",
+      "interactive",
+      "previewInfluence",
       "__debugTiming"
     ]
   },
@@ -81,6 +83,7 @@ export const COMMAND_FIELDS = {
     "required": [],
     "optional": [
       "compareMode",
+      "previewInfluence",
       "__debugTiming"
     ]
   },
@@ -122,6 +125,7 @@ export const EVENT_FIELDS = {
     "optional": [
       "manifestUrl",
       "assetBaseUrl",
+      "lod",
       "parameterCount"
     ]
   },

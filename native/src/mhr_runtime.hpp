@@ -23,6 +23,7 @@ struct BundleData final {
   uint32_t model_parameter_count = 0;
   uint32_t identity_count = 0;
   uint32_t expression_count = 0;
+  uint32_t parameter_input_count = 0;
   uint32_t vertex_count = 0;
   uint32_t joint_count = 0;
   uint32_t max_influence_count = 0;

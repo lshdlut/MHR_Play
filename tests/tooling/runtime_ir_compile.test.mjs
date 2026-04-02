@@ -39,6 +39,7 @@ test('runtime IR compiler emits sparse runtime-native bundle', () => {
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
     assert.equal(manifest.bundleSchema, 'mhr-runtime-ir/v1');
     assert.equal(manifest.schemaVersion, 1);
+    assert.equal(manifest.lod, 1);
     assert.equal(manifest.layout.identityPartitionMode, 'unsplit-export');
     assert.equal(manifest.layout.poseFeatureDimPerJoint, 6);
     assert.ok(manifest.analysis.parameterTransform.nnz > 0);

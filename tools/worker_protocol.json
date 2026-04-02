@@ -24,7 +24,7 @@
       "name": "applyStateAndEvaluate",
       "category": "evaluation",
       "required": ["statePatch"],
-      "optional": ["compareMode", "__debugTiming"]
+      "optional": ["compareMode", "interactive", "previewInfluence", "__debugTiming"]
     },
     {
       "name": "previewInfluence",
@@ -35,7 +35,7 @@
     {
       "name": "evaluate",
       "category": "evaluation",
-      "optional": ["compareMode", "__debugTiming"]
+      "optional": ["compareMode", "previewInfluence", "__debugTiming"]
     },
     {
       "name": "applyPreset",
@@ -62,7 +62,7 @@
       "name": "assetsLoaded",
       "category": "asset_loading",
       "required": ["bundleId"],
-      "optional": ["manifestUrl", "assetBaseUrl", "parameterCount"]
+      "optional": ["manifestUrl", "assetBaseUrl", "lod", "parameterCount"]
     },
     {
       "name": "debugPong",

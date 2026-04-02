@@ -7,7 +7,9 @@ from typing import Any
 import numpy as np
 
 
-OFFICIAL_ORACLE_KIND = "official-torchscript"
+OFFICIAL_ORACLE_KIND = "official-full-cpu"
+TORCHSCRIPT_ORACLE_KIND = "official-torchscript"
+SUPPORTED_ORACLE_KINDS = (OFFICIAL_ORACLE_KIND, TORCHSCRIPT_ORACLE_KIND)
 
 
 def import_torch():
@@ -21,6 +23,17 @@ def import_torch():
     return torch
 
 
+def import_official_mhr():
+    try:
+        from mhr.mhr import MHR
+    except ImportError as error:  # pragma: no cover - depends on local env
+        raise RuntimeError(
+            "The official full-package MHR python package is required for multi-LoD tooling. "
+            "Install the official `mhr` package into the PYTHON_EXE environment."
+        ) from error
+    return MHR
+
+
 def load_torchscript_model(asset_root: Path):
     torch = import_torch()
     model_path = asset_root / "mhr_model.pt"
@@ -31,6 +44,39 @@ def load_torchscript_model(asset_root: Path):
     return model
 
 
+def load_official_full_model(
+    asset_root: Path,
+    *,
+    lod: int,
+    wants_pose_correctives: bool = True,
+):
+    torch = import_torch()
+    MHR = import_official_mhr()
+    model = MHR.from_files(
+        folder=asset_root,
+        device=torch.device("cpu"),
+        lod=int(lod),
+        wants_pose_correctives=wants_pose_correctives,
+    )
+    model.eval()
+    return model
+
+
+def load_official_model(
+    asset_root: Path,
+    *,
+    lod: int,
+    oracle_kind: str = OFFICIAL_ORACLE_KIND,
+):
+    if oracle_kind == OFFICIAL_ORACLE_KIND:
+        return load_official_full_model(asset_root, lod=lod)
+    if oracle_kind == TORCHSCRIPT_ORACLE_KIND:
+        if int(lod) != 1:
+            raise ValueError("TorchScript oracle is available for lod=1 only.")
+        return load_torchscript_model(asset_root)
+    raise ValueError(f"Unsupported official oracle kind: {oracle_kind}")
+
+
 def classify_model_parameter(name: str) -> tuple[str, str]:
     if name.startswith("root_"):
         return "root", "curated"
@@ -39,12 +85,40 @@ def classify_model_parameter(name: str) -> tuple[str, str]:
     return "pose", "grouped"
 
 
-def build_parameter_metadata(model) -> dict[str, Any]:
-    parameter_names = list(model.get_parameter_names())
-    parameter_limits = model.get_parameter_limits().detach().cpu().numpy().astype(np.float32)
+def _extract_parameter_names(model) -> list[str]:
+    if hasattr(model, "get_parameter_names"):
+        return list(model.get_parameter_names())
+    parameter_transform = getattr(getattr(model, "character", None), "parameter_transform", None)
+    names = getattr(parameter_transform, "names", None)
+    if names is None:
+        raise AttributeError("Unable to extract parameter names from official model.")
+    return list(names)
+
+
+def _extract_parameter_limits(model) -> np.ndarray:
+    if hasattr(model, "get_parameter_limits"):
+        return model.get_parameter_limits().detach().cpu().numpy().astype(np.float32)
+
+    character = getattr(model, "character", None)
+    limits = getattr(character, "model_parameter_limits", None)
+    if isinstance(limits, tuple) and len(limits) == 2:
+        mins = np.asarray(limits[0], dtype=np.float32).reshape(-1)
+        maxs = np.asarray(limits[1], dtype=np.float32).reshape(-1)
+        if mins.shape != maxs.shape:
+            raise ValueError("Official full CPU model_parameter_limits tuple has mismatched shapes.")
+        return np.ascontiguousarray(np.stack([mins, maxs], axis=1))
+
+    raise AttributeError("Unable to extract parameter limits from official model.")
+
+
+def build_parameter_metadata(model, *, oracle_kind: str = OFFICIAL_ORACLE_KIND) -> dict[str, Any]:
+    parameter_names = _extract_parameter_names(model)
+    parameter_limits = _extract_parameter_limits(model)
     identity_count = int(model.get_num_identity_blendshapes())
     expression_count = int(model.get_num_face_expression_blendshapes())
-    model_parameter_count = len(parameter_names) - identity_count
+    model_parameter_count = len(parameter_names) - identity_count - expression_count
+    if model_parameter_count <= 0:
+        raise ValueError("Official parameter metadata extraction produced an invalid modelParameterCount.")
 
     parameters: list[dict[str, Any]] = []
     sections: dict[str, dict[str, int]] = {
@@ -72,28 +146,40 @@ def build_parameter_metadata(model) -> dict[str, Any]:
         )
         sections[state_section][name] = raw_index
 
-    for local_index, name in enumerate(parameter_names[model_parameter_count:]):
-        raw_index = model_parameter_count + local_index
+    trailing_names = parameter_names[model_parameter_count:]
+    identity_names = trailing_names[:identity_count]
+    expression_names = trailing_names[identity_count : identity_count + expression_count]
+
+    for local_index in range(identity_count):
+        raw_name = identity_names[local_index] if local_index < len(identity_names) else f"blend_{local_index}"
         alias = f"blend_{local_index:02d}"
+        raw_limit_index = model_parameter_count + local_index
         parameters.append(
             {
-                "key": name,
-                "label": name,
+                "key": alias,
+                "label": alias,
                 "domain": "identity",
                 "stateSection": "surfaceShape",
                 "tier": "grouped",
                 "rawIndex": local_index,
+                "rawKey": raw_name,
                 "default": 0.0,
-                "min": float(parameter_limits[raw_index, 0]),
-                "max": float(parameter_limits[raw_index, 1]),
+                "min": float(parameter_limits[raw_limit_index, 0]),
+                "max": float(parameter_limits[raw_limit_index, 1]),
             }
         )
-        sections["surfaceShape"][name] = local_index
         sections["surfaceShape"][alias] = local_index
+        sections["surfaceShape"][raw_name] = local_index
 
-    for raw_index in range(expression_count):
-        key = f"expression_{raw_index:02d}"
-        alt_key = f"expression_{raw_index}"
+    for local_index in range(expression_count):
+        raw_name = (
+            expression_names[local_index]
+            if local_index < len(expression_names)
+            else f"blend_{identity_count + local_index}"
+        )
+        key = f"expression_{local_index:02d}"
+        alt_key = f"expression_{local_index}"
+        raw_limit_index = model_parameter_count + identity_count + local_index
         parameters.append(
             {
                 "key": key,
@@ -101,16 +187,19 @@ def build_parameter_metadata(model) -> dict[str, Any]:
                 "domain": "expression",
                 "stateSection": "expression",
                 "tier": "grouped",
-                "rawIndex": raw_index,
+                "rawIndex": local_index,
+                "rawKey": raw_name,
                 "default": 0.0,
-                "min": -1.0,
-                "max": 1.0,
+                "min": float(parameter_limits[raw_limit_index, 0]),
+                "max": float(parameter_limits[raw_limit_index, 1]),
             }
         )
-        sections["expression"][key] = raw_index
-        sections["expression"][alt_key] = raw_index
+        sections["expression"][key] = local_index
+        sections["expression"][alt_key] = local_index
+        sections["expression"][raw_name] = local_index
 
     return {
+        "oracle": oracle_kind,
         "semanticLayers": ["curated", "grouped", "raw"],
         "groups": [
             {"id": "root", "label": "Root / Global"},

@@ -20,14 +20,27 @@ function absolutizeUrl(rawValue, fallbackBaseUrl = '') {
   }
 }
 
+function normalizeLod(rawValue) {
+  if (rawValue == null || rawValue === '') {
+    return null;
+  }
+  const numeric = Number(rawValue);
+  if (!Number.isInteger(numeric) || numeric < 0) {
+    throw new Error(`Invalid LOD value: ${String(rawValue)}`);
+  }
+  return numeric;
+}
+
 export function normalizeAssetConfig(input = {}, target = globalThis) {
   const fallbackBaseUrl =
     typeof target?.location?.href === 'string' ? target.location.href : '';
   const manifestUrl = absolutizeUrl(input?.manifestUrl, fallbackBaseUrl);
   const assetBaseUrl = absolutizeUrl(input?.assetBaseUrl, fallbackBaseUrl);
+  const lod = normalizeLod(input?.lod);
 
   return freezeIfObject({
     manifestUrl,
     assetBaseUrl,
+    lod,
   });
 }

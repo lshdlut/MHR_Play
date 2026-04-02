@@ -38,6 +38,8 @@ test('native reference smoke', async (t) => {
       'tools/mhr_asset_preprocess.py',
       '--source-kind',
       'official',
+      '--lod',
+      '1',
       '--out',
       bundleOut,
     ]);
@@ -46,6 +48,8 @@ test('native reference smoke', async (t) => {
     const oracle = runOptionalPython([
       'tools/run_python.py',
       'tools/mhr_python_oracle.py',
+      '--lod',
+      '1',
       '--out',
       oracleOut,
     ]);
@@ -69,6 +73,7 @@ test('native reference smoke', async (t) => {
     const reportPath = path.join(nativeOut, 'report.json');
     assert.ok(existsSync(reportPath));
     const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+    assert.equal(report.lod, 1);
     assert.equal(report.cases.length, 5);
     for (const check of Object.values(report.discreteChecks)) {
       assert.equal(check.pass, true);

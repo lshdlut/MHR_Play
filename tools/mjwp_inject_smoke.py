@@ -93,6 +93,7 @@ def main() -> int:
     parser.add_argument("base_url", help="base URL for the local mjwp_inject server")
     parser.add_argument("--session", default="mhr-mjwp-smoke")
     parser.add_argument("--browser", default="msedge")
+    parser.add_argument("--lod", type=int, default=1)
     parser.add_argument("--timeout-s", type=float, default=90.0)
     args = parser.parse_args()
 
@@ -109,7 +110,7 @@ def main() -> int:
         npx_path,
         args.session,
         "open",
-        f"{args.base_url.rstrip('/')}/mhr.html",
+        f"{args.base_url.rstrip('/')}/mhr.html?lod={int(args.lod)}",
         "--browser",
         args.browser,
     )
@@ -118,6 +119,7 @@ def main() -> int:
         "() => JSON.stringify({"
         " title: document.title,"
         " profile: document.documentElement?.getAttribute('data-play-profile') ?? '',"
+        " requestedLod: Number(new URL(window.location.href).searchParams.get('lod') || 0),"
         " visualSourceMode: window.__PLAY_HOST__?.store?.get?.()?.visualSourceMode ?? '',"
         " controlCount: document.querySelectorAll('[data-testid=\"section-plugin:mhr-control\"]').length,"
         " scaleCount: document.querySelectorAll('[data-testid=\"section-plugin:mhr-scale\"]').length,"
@@ -128,6 +130,8 @@ def main() -> int:
         " hasMesh: !!window.__renderCtx?.scene?.getObjectByName?.('mhr-profile:mesh'),"
         " hasService: !!(window.__PLAY_HOST__?.services?.mhr ?? window.__PLAY_HOST__?.extensions?.mhr?.service),"
         " geom: Number(window.__PLAY_HOST__?.getSnapshot?.()?.scn_ngeom || 0),"
+        " assetLod: Number((window.__PLAY_HOST__?.services?.mhr?.snapshot?.() ?? window.__PLAY_HOST__?.extensions?.mhr?.getSnapshot?.())?.mhr?.assets?.lod ?? -1),"
+        " derivedLod: Number((window.__PLAY_HOST__?.services?.mhr?.snapshot?.() ?? window.__PLAY_HOST__?.extensions?.mhr?.getSnapshot?.())?.mhr?.evaluation?.derived?.lod ?? -1),"
         " vertexCount: Number((window.__PLAY_HOST__?.services?.mhr?.snapshot?.() ?? window.__PLAY_HOST__?.extensions?.mhr?.getSnapshot?.())?.mhr?.evaluation?.mesh?.vertexCount || 0),"
         " jointCount: Number((window.__PLAY_HOST__?.services?.mhr?.snapshot?.() ?? window.__PLAY_HOST__?.extensions?.mhr?.getSnapshot?.())?.mhr?.evaluation?.skeleton?.jointCount || 0)"
         "})"
@@ -142,11 +146,14 @@ def main() -> int:
         last_payload = payload
         if (
             payload.get("profile") == "mhr"
+            and int(payload.get("requestedLod", -1)) == int(args.lod)
             and payload.get("visualSourceMode") == "preset-sun"
             and payload.get("hasHost")
             and payload.get("hasBackend")
             and payload.get("hasService")
             and payload.get("hasMesh")
+            and int(payload.get("assetLod", -1)) == int(args.lod)
+            and int(payload.get("derivedLod", -1)) == int(args.lod)
             and int(payload.get("controlActionRows", 0)) >= 1
             and int(payload.get("controlBoolRows", 0)) >= 1
             and int(payload.get("vertexCount", 0)) > 0

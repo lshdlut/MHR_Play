@@ -5,6 +5,7 @@
   "bundleId": "minimal-human-fixture",
   "sourceId": "minimal-human-source",
   "modelVersion": "0.1.0",
+  "lod": 1,
   "bundleFingerprint": "sha256:b1aec9e1d882f23efe6ad8cd8aa8eb277f0554b5cfe17a4481168344afe44740",
   "parameterMetadata": {
     "counts": {

@@ -60,6 +60,13 @@ function requireNonEmptyString(value, label) {
   return value.trim();
 }
 
+function requireLod(value, label) {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer.`);
+  }
+  return value;
+}
+
 function toUint8Array(value) {
   if (value instanceof Uint8Array) {
     return value;
@@ -126,6 +133,7 @@ export function validateProcessedBundleManifest(manifest) {
   if (!Array.isArray(manifest.chunks)) {
     throw new Error('Processed bundle manifest requires chunks.');
   }
+  const lod = requireLod(manifest.lod, 'Processed bundle manifest lod');
 
   const seen = new Set();
   const chunkMap = {};
@@ -163,6 +171,7 @@ export function validateProcessedBundleManifest(manifest) {
 
   return {
     bundleId,
+    lod,
     bundleSchema: manifest.bundleSchema,
     schemaVersion: manifest.schemaVersion,
     sourceId,
@@ -199,6 +208,7 @@ export function validateRuntimeIrManifest(manifest) {
   if (!Array.isArray(manifest.chunks)) {
     throw new Error('Runtime IR manifest requires chunks.');
   }
+  const lod = requireLod(manifest.lod, 'Runtime IR manifest lod');
 
   const seen = new Set();
   const chunkMap = {};
@@ -236,6 +246,7 @@ export function validateRuntimeIrManifest(manifest) {
 
   return {
     irId,
+    lod,
     bundleSchema: manifest.bundleSchema,
     schemaVersion: manifest.schemaVersion,
     chunkCount: manifest.chunks.length,
@@ -278,6 +289,11 @@ export async function loadProcessedBundleManifest(
     ...chunk,
     url: new URL(chunk.file, assetBaseUrl).href,
   }));
+  if (resolvedAssetConfig.lod != null && validated.lod !== resolvedAssetConfig.lod) {
+    throw new Error(
+      `Processed bundle lod mismatch: requested ${resolvedAssetConfig.lod}, loaded ${validated.lod}.`,
+    );
+  }
 
   return Object.freeze({
     ...manifest,
@@ -323,6 +339,11 @@ export async function loadRuntimeIrManifest(
     ...chunk,
     url: new URL(chunk.file, assetBaseUrl).href,
   }));
+  if (resolvedAssetConfig.lod != null && validated.lod !== resolvedAssetConfig.lod) {
+    throw new Error(
+      `Runtime IR lod mismatch: requested ${resolvedAssetConfig.lod}, loaded ${validated.lod}.`,
+    );
+  }
 
   return Object.freeze({
     ...manifest,

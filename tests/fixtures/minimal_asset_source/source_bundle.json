@@ -2,6 +2,7 @@
   "bundleId": "minimal-human-fixture",
   "sourceId": "minimal-human-source",
   "modelVersion": "0.1.0",
+  "lod": 1,
   "parameterMetadata": {
     "counts": {
       "modelParameterCount": 12,

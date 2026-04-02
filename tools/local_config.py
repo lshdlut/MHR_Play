@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -121,6 +122,23 @@ def resolve_mhr_asset_root(repo_root: Path, config: dict[str, Any] | None = None
 
     ref_root = resolve_mhr_reference_root(repo_root, payload)
     if ref_root is None:
-        return None
+        temp_candidate = Path(tempfile.gettempdir()) / "mhr-official-assets" / "assets"
+        return temp_candidate.resolve() if temp_candidate.exists() else None
     candidate = ref_root / "assets"
     return candidate.resolve() if candidate.exists() else None
+
+
+def official_bundle_dir(repo_root: Path, lod: int) -> Path:
+    return repo_root / "local_tools" / "official_bundle" / f"lod{int(lod)}"
+
+
+def official_bundle_manifest_path(repo_root: Path, lod: int) -> Path:
+    return official_bundle_dir(repo_root, lod) / "manifest.json"
+
+
+def official_runtime_ir_dir(repo_root: Path, lod: int) -> Path:
+    return repo_root / "local_tools" / "official_runtime_ir" / f"lod{int(lod)}"
+
+
+def official_runtime_ir_manifest_path(repo_root: Path, lod: int) -> Path:
+    return official_runtime_ir_dir(repo_root, lod) / "manifest.json"
