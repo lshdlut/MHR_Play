@@ -39,6 +39,39 @@ function Resolve-PythonExe() {
     throw "Required tool not found in PATH: python (or set PYTHON_EXE)."
 }
 
+function Ensure-LodArtifacts([string]$RepoRoot, [string]$PythonExe, [int]$TargetLod) {
+    $bundleRoot = Join-Path $RepoRoot "local_tools\\official_bundle"
+    $bundleDir = Join-Path $bundleRoot ("lod{0}" -f $TargetLod)
+    $bundleManifest = Join-Path $bundleDir "manifest.json"
+    $runtimeIrRoot = Join-Path $RepoRoot "local_tools\\official_runtime_ir"
+    $runtimeIrDir = Join-Path $runtimeIrRoot ("lod{0}" -f $TargetLod)
+    $runtimeIrManifest = Join-Path $runtimeIrDir "manifest.json"
+
+    if (-not (Test-Path -LiteralPath $bundleManifest)) {
+        Write-Host "[mjwp_inject] preprocessing official bundle for lod$TargetLod -> $bundleDir"
+        if (Test-Path -LiteralPath $bundleDir) {
+            Remove-Item -LiteralPath $bundleDir -Recurse -Force
+        }
+        New-Item -ItemType Directory -Force -Path $bundleDir | Out-Null
+        & $PythonExe (Join-Path $RepoRoot "tools\\mhr_asset_preprocess.py") --source-kind official --lod $TargetLod --out $bundleDir
+        if ($LASTEXITCODE -ne 0) {
+            throw "mhr_asset_preprocess.py failed with exit code $LASTEXITCODE"
+        }
+    }
+
+    if ((-not (Test-Path -LiteralPath $runtimeIrManifest)) -and (Test-Path -LiteralPath $bundleManifest)) {
+        Write-Host "[mjwp_inject] compiling official runtime IR for lod$TargetLod -> $runtimeIrDir"
+        if (Test-Path -LiteralPath $runtimeIrDir) {
+            Remove-Item -LiteralPath $runtimeIrDir -Recurse -Force
+        }
+        New-Item -ItemType Directory -Force -Path $runtimeIrDir | Out-Null
+        & $PythonExe (Join-Path $RepoRoot "tools\\mhr_runtime_ir_compile.py") --manifest $bundleManifest --out $runtimeIrDir --zero-epsilon 0.0
+        if ($LASTEXITCODE -ne 0) {
+            throw "mhr_runtime_ir_compile.py failed with exit code $LASTEXITCODE"
+        }
+    }
+}
+
 function Copy-TreeIntoRoot([string]$SourceRoot, [string]$DestinationRoot) {
     if (-not (Test-Path -LiteralPath $SourceRoot)) {
         return
@@ -100,39 +133,14 @@ $playClone = Join-Path $workDirAbs "play"
 $metaPath = Join-Path $playClone ".mjwp_inject_meta.json"
 $playParent = Split-Path -Parent $playSrcAbs
 $playForgeRoot = Join-Path $playParent "mujoco-wasm-forge"
-$officialBundleRoot = Join-Path $repoRoot "local_tools\\official_bundle"
-$officialBundleDir = Join-Path $officialBundleRoot ("lod{0}" -f $Lod)
-$officialBundleManifest = Join-Path $officialBundleDir "manifest.json"
 $officialRuntimeIrRoot = Join-Path $repoRoot "local_tools\\official_runtime_ir"
-$officialRuntimeIrDir = Join-Path $officialRuntimeIrRoot ("lod{0}" -f $Lod)
-$officialRuntimeIrManifest = Join-Path $officialRuntimeIrDir "manifest.json"
 
 if (-not (Test-Path -LiteralPath (Join-Path $playSrcAbs ".git"))) {
     throw "PlaySrc must point to a git checkout: $playSrcAbs"
 }
 
-if (-not (Test-Path -LiteralPath $officialBundleManifest)) {
-    Write-Host "[mjwp_inject] preprocessing official bundle for lod$Lod -> $officialBundleDir"
-    if (Test-Path -LiteralPath $officialBundleDir) {
-        Remove-Item -LiteralPath $officialBundleDir -Recurse -Force
-    }
-    New-Item -ItemType Directory -Force -Path $officialBundleDir | Out-Null
-    & $pythonExe (Join-Path $repoRoot "tools\\mhr_asset_preprocess.py") --source-kind official --lod $Lod --out $officialBundleDir
-    if ($LASTEXITCODE -ne 0) {
-        throw "mhr_asset_preprocess.py failed with exit code $LASTEXITCODE"
-    }
-}
-
-if ((-not (Test-Path -LiteralPath $officialRuntimeIrManifest)) -and (Test-Path -LiteralPath $officialBundleManifest)) {
-    Write-Host "[mjwp_inject] compiling official runtime IR for lod$Lod -> $officialRuntimeIrDir"
-    if (Test-Path -LiteralPath $officialRuntimeIrDir) {
-        Remove-Item -LiteralPath $officialRuntimeIrDir -Recurse -Force
-    }
-    New-Item -ItemType Directory -Force -Path $officialRuntimeIrDir | Out-Null
-    & $pythonExe (Join-Path $repoRoot "tools\\mhr_runtime_ir_compile.py") --manifest $officialBundleManifest --out $officialRuntimeIrDir --zero-epsilon 0.0
-    if ($LASTEXITCODE -ne 0) {
-        throw "mhr_runtime_ir_compile.py failed with exit code $LASTEXITCODE"
-    }
+foreach ($supportedLod in 0..6) {
+    Ensure-LodArtifacts -RepoRoot $repoRoot -PythonExe $pythonExe -TargetLod $supportedLod
 }
 
 $needFreshClone = $Clean.IsPresent -or (-not (Test-Path -LiteralPath (Join-Path $playClone ".git")))

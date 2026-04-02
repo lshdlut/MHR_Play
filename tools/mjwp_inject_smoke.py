@@ -94,6 +94,7 @@ def main() -> int:
     parser.add_argument("--session", default="mhr-mjwp-smoke")
     parser.add_argument("--browser", default="msedge")
     parser.add_argument("--lod", type=int, default=1)
+    parser.add_argument("--switch-to-lod", type=int, default=None)
     parser.add_argument("--timeout-s", type=float, default=90.0)
     args = parser.parse_args()
 
@@ -123,8 +124,20 @@ def main() -> int:
         " visualSourceMode: window.__PLAY_HOST__?.store?.get?.()?.visualSourceMode ?? '',"
         " controlCount: document.querySelectorAll('[data-testid=\"section-plugin:mhr-control\"]').length,"
         " scaleCount: document.querySelectorAll('[data-testid=\"section-plugin:mhr-scale\"]').length,"
+        " expressionCount: document.querySelectorAll('[data-testid=\"section-plugin:mhr-expression\"]').length,"
         " controlActionRows: document.querySelectorAll('.mhr-control-action-row').length,"
         " controlBoolRows: document.querySelectorAll('.mhr-control-bool-row').length,"
+        " hasLodSelect: !!document.querySelector('[data-testid=\"mhr-lod-select\"]'),"
+        " hasFreeExpression: !!document.querySelector('[data-testid=\"mhr-free-expression\"]'),"
+        " jointAxesShareRow: (() => {"
+        "   const labelsRow = document.querySelector('[data-testid=\"mhr-joint-labels\"]')?.closest('.mhr-control-bool-row');"
+        "   const axesRow = document.querySelector('[data-testid=\"mhr-joint-axes\"]')?.closest('.mhr-control-bool-row');"
+        "   return !!labelsRow && labelsRow === axesRow;"
+        " })(),"
+        " hasFreeBlendWarningRow: (() => {"
+        "   const rows = Array.from(document.querySelectorAll('[data-testid=\"section-plugin:mhr-control\"] .control-static'));"
+        "   return rows.some((row) => String(row.textContent || '').includes('Free blend and free expression can be unsettling.'));"
+        " })(),"
         " hasHost: !!window.__PLAY_HOST__,"
         " hasBackend: !!window.__PLAY_HOST__?.backend,"
         " hasMesh: !!window.__renderCtx?.scene?.getObjectByName?.('mhr-profile:mesh'),"
@@ -148,6 +161,10 @@ def main() -> int:
             payload.get("profile") == "mhr"
             and int(payload.get("requestedLod", -1)) == int(args.lod)
             and payload.get("visualSourceMode") == "preset-sun"
+            and payload.get("hasLodSelect")
+            and payload.get("hasFreeExpression")
+            and payload.get("jointAxesShareRow")
+            and payload.get("hasFreeBlendWarningRow")
             and payload.get("hasHost")
             and payload.get("hasBackend")
             and payload.get("hasService")
@@ -160,6 +177,7 @@ def main() -> int:
             and int(payload.get("jointCount", 0)) > 0
             and int(payload.get("controlCount", 0)) == 1
             and int(payload.get("scaleCount", 0)) == 1
+            and int(payload.get("expressionCount", 0)) == 1
         ):
             eval_js(
                 repo_root,
@@ -194,7 +212,72 @@ def main() -> int:
             )
             payload["jointLabelsDrawn"] = int(label_payload.get("labelsDrawn", 0))
             payload["jointLabelsSample"] = label_payload.get("sample")
-            print(json.dumps({"ok": True, "payload": payload}))
+            if args.switch_to_lod is not None and int(args.switch_to_lod) != int(args.lod):
+                eval_js(
+                    repo_root,
+                    npx_path,
+                    args.session,
+                    (
+                        "() => JSON.stringify({"
+                        f" requested: {int(args.switch_to_lod)},"
+                        " switched: (() => {"
+                        "   const select = document.querySelector('[data-testid=\"mhr-lod-select\"]');"
+                        "   if (!select) return false;"
+                        f"   select.value = String({int(args.switch_to_lod)});"
+                        "   select.dispatchEvent(new Event('change', { bubbles: true }));"
+                        "   return true;"
+                        " })()"
+                        "})"
+                    ),
+                )
+                switched_payload = wait_for_condition(
+                    repo_root,
+                    npx_path,
+                    args.session,
+                    js,
+                    lambda value: (
+                        isinstance(value, dict)
+                        and value.get("profile") == "mhr"
+                        and int(value.get("requestedLod", -1)) == int(args.switch_to_lod)
+                        and value.get("visualSourceMode") == "preset-sun"
+                        and value.get("hasLodSelect")
+                        and value.get("hasFreeExpression")
+                        and value.get("jointAxesShareRow")
+                        and value.get("hasFreeBlendWarningRow")
+                        and value.get("hasHost")
+                        and value.get("hasBackend")
+                        and value.get("hasService")
+                        and value.get("hasMesh")
+                        and int(value.get("assetLod", -1)) == int(args.switch_to_lod)
+                        and int(value.get("derivedLod", -1)) == int(args.switch_to_lod)
+                        and int(value.get("expressionCount", 0)) == 1
+                        and int(value.get("vertexCount", 0)) > 0
+                        and int(value.get("jointCount", 0)) > 0
+                    ),
+                    timeout_s=max(12.0, args.timeout_s),
+                )
+                switched_label_payload = wait_for_condition(
+                    repo_root,
+                    npx_path,
+                    args.session,
+                    (
+                        "() => JSON.stringify({"
+                        " labelsDrawn: Number(window.__PLAY_HOST__?.renderer?.getContext?.()?.labelOverlay?.mhrJointLabelsDrawn || 0),"
+                        " sample: window.__PLAY_HOST__?.renderer?.getContext?.()?.labelOverlay?.mhrJointLabelsSample || null"
+                        "})"
+                    ),
+                    lambda value: isinstance(value, dict) and int(value.get("labelsDrawn", 0)) > 0,
+                    timeout_s=8.0,
+                )
+                switched_payload["jointLabelsDrawn"] = int(switched_label_payload.get("labelsDrawn", 0))
+                switched_payload["jointLabelsSample"] = switched_label_payload.get("sample")
+                print(json.dumps({
+                    "ok": True,
+                    "payload": switched_payload,
+                    "initialPayload": payload,
+                }))
+            else:
+                print(json.dumps({"ok": True, "payload": payload}))
             run_cli(repo_root, npx_path, args.session, "close")
             return 0
         time.sleep(0.5)

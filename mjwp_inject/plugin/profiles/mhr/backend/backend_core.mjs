@@ -510,12 +510,17 @@ export async function createBackend({ runtimeConfig = null, assetConfig = null }
     return pending;
   }
 
-  function applyInteractiveStateAndEvaluate(statePatch = {}, options = {}) {
+  async function applyInteractiveStateAndEvaluate(statePatch = {}, options = {}) {
+    const pending = enqueuePending('evaluation', (payload) => ({
+      revision: payload?.revision || 0,
+      status: 'evaluated',
+    }));
     ensureWorker().postMessage(encodeCommand('applyStateAndEvaluate', {
       statePatch,
       interactive: true,
       ...options,
     }));
+    return pending;
   }
 
   async function previewInfluence({ previewId = 0, parameterKey = '', stateSection = '', revision = 0 } = {}) {

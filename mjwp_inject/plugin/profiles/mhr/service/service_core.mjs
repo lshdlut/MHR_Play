@@ -43,6 +43,13 @@ function mergePatch(target, patch) {
   }
 }
 
+function readPreviewInfluenceOption(options) {
+  if (Object.prototype.hasOwnProperty.call(options || {}, "previewInfluence")) {
+    return options?.previewInfluence || null;
+  }
+  return null;
+}
+
 function isRuntimeUpAlignmentParameter(parameter) {
   if (!parameter || typeof parameter !== 'object') {
     return false;
@@ -115,18 +122,35 @@ export async function createMhrService({ runtimeConfig = null, assetConfig = nul
   let flushRequested = false;
   let pendingTrace = null;
   let pendingPreviewInfluence = null;
+  let interactivePendingPatch = cloneEmptyPatch();
+  let interactiveTaskActive = false;
+  let interactiveRequested = false;
+  let interactiveTrace = null;
+  let interactivePreviewInfluence = null;
   let queue = Promise.resolve();
 
-  const readyPromise = (async () => {
-    const current = backend.snapshot()?.mhr || null;
-    if (!current?.assets && assetConfig?.manifestUrl) {
-      await backend.loadAssets(assetConfig);
-    }
+  async function loadAssetsAndDefaults(nextAssetConfig) {
+    await backend.loadAssets(nextAssetConfig);
     const afterLoad = backend.snapshot()?.mhr || null;
     const parameters = Array.isArray(afterLoad?.assets?.parameterMetadata?.parameters)
       ? afterLoad.assets.parameterMetadata.parameters
       : [];
+    const defaultsPatch = buildDefaultsPatch(parameters);
+    await backend.applyStateAndEvaluate(defaultsPatch, { compareMode: DISPLAY_COMPARE_MODE });
+    return backend.snapshot();
+  }
+
+  const readyPromise = (async () => {
+    const current = backend.snapshot()?.mhr || null;
+    if (!current?.assets && assetConfig?.manifestUrl) {
+      await loadAssetsAndDefaults(assetConfig);
+      return;
+    }
+    const afterLoad = backend.snapshot()?.mhr || null;
     if (afterLoad?.assets && !afterLoad?.evaluation) {
+      const parameters = Array.isArray(afterLoad?.assets?.parameterMetadata?.parameters)
+        ? afterLoad.assets.parameterMetadata.parameters
+        : [];
       const defaultsPatch = buildDefaultsPatch(parameters);
       await backend.applyStateAndEvaluate(defaultsPatch, { compareMode: DISPLAY_COMPARE_MODE });
     }
@@ -173,6 +197,45 @@ export async function createMhrService({ runtimeConfig = null, assetConfig = nul
     return queue;
   }
 
+  function kickInteractiveLoop() {
+    interactiveRequested = true;
+    if (interactiveTaskActive || disposed) {
+      return queue;
+    }
+    interactiveTaskActive = true;
+    queue = serial(async () => {
+      try {
+        await readyPromise;
+        while (!disposed) {
+          interactiveRequested = false;
+          const patch = interactivePendingPatch;
+          const trace = interactiveTrace || null;
+          const previewInfluence = interactivePreviewInfluence || null;
+          interactivePendingPatch = cloneEmptyPatch();
+          interactiveTrace = null;
+          interactivePreviewInfluence = null;
+          if (!hasPatchValues(patch)) {
+            break;
+          }
+          await backend.applyInteractiveStateAndEvaluate(patch, {
+            compareMode: DISPLAY_COMPARE_MODE,
+            ...(previewInfluence ? { previewInfluence } : {}),
+            ...(trace ? { __debugTiming: trace } : {}),
+          });
+          if (!interactiveRequested && !hasPatchValues(interactivePendingPatch)) {
+            break;
+          }
+        }
+      } finally {
+        interactiveTaskActive = false;
+        if (!disposed && (interactiveRequested || hasPatchValues(interactivePendingPatch))) {
+          kickInteractiveLoop();
+        }
+      }
+    });
+    return queue;
+  }
+
   async function applyPatch(statePatch = {}, options = {}) {
     const interactive = options?.interactive === true;
     const trace = options?.__debugTiming || null;
@@ -181,20 +244,38 @@ export async function createMhrService({ runtimeConfig = null, assetConfig = nul
     }
     if (interactive) {
       await readyPromise;
-      backend.applyInteractiveStateAndEvaluate(statePatch, {
-        compareMode: DISPLAY_COMPARE_MODE,
-        ...(options?.previewInfluence ? { previewInfluence: options.previewInfluence } : {}),
-        ...(trace ? { __debugTiming: trace } : {}),
-      });
+      mergePatch(interactivePendingPatch, statePatch);
+      interactivePreviewInfluence = readPreviewInfluenceOption(options);
+      interactiveTrace = trace;
+      interactiveRequested = true;
+      kickInteractiveLoop();
       return null;
     }
     mergePatch(pendingPatch, statePatch);
-    pendingPreviewInfluence = options?.previewInfluence || pendingPreviewInfluence;
+    pendingPreviewInfluence = readPreviewInfluenceOption(options);
     if (trace) {
       pendingTrace = trace;
     }
     flushRequested = true;
     return kickFlushLoop();
+  }
+
+  async function loadAssets(nextAssetConfig = null) {
+    if (disposed) {
+      throw new Error('mhr service is disposed');
+    }
+    pendingPatch = cloneEmptyPatch();
+    flushRequested = false;
+    pendingTrace = null;
+    pendingPreviewInfluence = null;
+    interactivePendingPatch = cloneEmptyPatch();
+    interactiveRequested = false;
+    interactiveTrace = null;
+    interactivePreviewInfluence = null;
+    return serial(async () => {
+      await readyPromise;
+      return loadAssetsAndDefaults(nextAssetConfig || assetConfig || {});
+    });
   }
 
   function snapshot() {
@@ -206,7 +287,14 @@ export async function createMhrService({ runtimeConfig = null, assetConfig = nul
   }
 
   function hasPendingCommit() {
-    return flushTaskActive || flushRequested || hasPatchValues(pendingPatch);
+    return (
+      flushTaskActive
+      || flushRequested
+      || hasPatchValues(pendingPatch)
+      || interactiveTaskActive
+      || interactiveRequested
+      || hasPatchValues(interactivePendingPatch)
+    );
   }
 
   function dispose() {
@@ -222,6 +310,7 @@ export async function createMhrService({ runtimeConfig = null, assetConfig = nul
     snapshot,
     subscribe,
     applyPatch,
+    loadAssets,
     hasPendingCommit,
     ready: () => readyPromise,
     dispose,

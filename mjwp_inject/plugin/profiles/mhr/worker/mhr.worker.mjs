@@ -464,6 +464,27 @@ function buildInfluencePreviewPayload(request, baseResult) {
   };
 }
 
+function assertFiniteFloatArray(values, label) {
+  if (!(values instanceof Float32Array)) {
+    throw new Error(`${label} must be a Float32Array.`);
+  }
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    if (!Number.isFinite(value)) {
+      throw new Error(`${label} contains non-finite value at index ${index}.`);
+    }
+  }
+}
+
+function assertFiniteEvaluationResult(result) {
+  if (!result || typeof result !== 'object') {
+    throw new Error('Evaluation result is missing.');
+  }
+  assertFiniteFloatArray(result.vertices, 'evaluation.vertices');
+  assertFiniteFloatArray(result.skeleton, 'evaluation.skeleton');
+  assertFiniteFloatArray(result.derived, 'evaluation.derived');
+}
+
 async function ensureWasmRuntime() {
   if (runtime.wasmRuntime) {
     return runtime.wasmRuntime;
@@ -521,6 +542,7 @@ function evaluateCurrentState(compareMode, debugTiming) {
   }
   const wasmRunStart = performance.now();
   const result = runtime.wasmRuntime.runEvaluate(rawInputs);
+  assertFiniteEvaluationResult(result);
   if (debugTiming) {
     debugTiming.worker.runEvaluateWallMs = performance.now() - wasmRunStart;
     debugTiming.wasm = result.debugTiming || null;
@@ -541,6 +563,7 @@ function evaluateStateValue(state, debugTiming = null) {
   }
   const wasmRunStart = performance.now();
   const result = runtime.wasmRuntime.runEvaluate(rawInputs);
+  assertFiniteEvaluationResult(result);
   if (debugTiming) {
     debugTiming.worker.runEvaluateWallMs = performance.now() - wasmRunStart;
     debugTiming.wasm = result.debugTiming || null;

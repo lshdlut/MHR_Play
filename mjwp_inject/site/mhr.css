@@ -73,6 +73,10 @@ html[data-play-profile="mhr"] [data-testid="overlay-sensor"] {
   align-items: stretch;
 }
 
+.mhr-control-cell--span-two {
+  grid-column: 1 / -1;
+}
+
 .mhr-control-cell > .action-row,
 .mhr-control-cell > .bool-row,
 .mhr-control-cell > .btn-pill,
@@ -87,6 +91,23 @@ html[data-play-profile="mhr"] [data-testid="overlay-sensor"] {
 
 .mhr-control-bool-cell .bool-label {
   width: 100%;
+}
+
+.mhr-control-note-cell {
+  display: flex;
+  align-items: center;
+}
+
+.mhr-control-note {
+  color: var(--color-text-muted);
+  font-size: calc(11px * var(--viewer-font-scale));
+  line-height: 1.25;
+}
+
+.mhr-control-note-row {
+  color: var(--color-text-muted);
+  font-size: calc(11px * var(--viewer-font-scale));
+  line-height: 1.25;
 }
 
 .mhr-panel-stack {

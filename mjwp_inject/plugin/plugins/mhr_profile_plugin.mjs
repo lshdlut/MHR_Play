@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getRuntimeConfig } from '../core/runtime_config.mjs';
+import { loadRuntimeIrManifest } from '../profiles/mhr/core/asset_bundle.mjs';
 import { buildViewerCameraPayload } from '../renderer/pipeline.mjs';
 import { syncLabelOverlayViewport } from '../renderer/label_overlay.mjs';
 import { switchVisualSourceMode } from '../ui/viewer_actions.mjs';
@@ -32,6 +33,7 @@ const SKELETON_AXIS_RADIUS_RAW = 0.44;
 const BLEND_BODY_REGION_END = 19;
 const BLEND_FACE_REGION_END = 39;
 const BLEND_HAND_REGION_END = 44;
+const SUPPORTED_LODS = Object.freeze([0, 1, 2, 3, 4, 5, 6]);
 const JOINT_LABEL_FONT_PX = 10;
 const JOINT_LABEL_FONT = `${JOINT_LABEL_FONT_PX}px "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
 const JOINT_LABEL_TEXT_COLOR = 'rgba(255, 255, 255, 0.96)';
@@ -44,7 +46,14 @@ const INFLUENCE_PREVIEW_SCALE_DOWN_ALPHA = 0.08;
 const FAMILY_RANDOM_COMMIT_INTERVAL_MS = 16;
 const FAMILY_RANDOM_TRANSITION_MIN_MS = 900;
 const FAMILY_RANDOM_TRANSITION_MAX_MS = 1500;
-const FAMILY_RANDOM_BLEND_RANGE_FRACTION = 0.6;
+const UI_BLEND_ABS_RANGE = 6.0;
+const UI_EXPRESSION_ABS_RANGE = 2.0;
+const UI_ROOT_TRANSLATION_ABS_RANGE = 30.0;
+const UI_ROOT_ROTATION_ABS_RANGE = Math.PI * 3;
+const FAMILY_RANDOM_BLEND_ABS_RADIUS = 6.0;
+const FAMILY_RANDOM_BLEND_LEADING_ABS_RADIUS = 4.0;
+const FAMILY_RANDOM_BLEND_LEADING_COUNT = 3;
+const FAMILY_RANDOM_EXPRESSION_ABS_RADIUS = 1.0;
 const FAMILY_RANDOM_POSE_RANGE_FRACTION = 0.42;
 const FAMILY_RANDOM_FIXED_RANGE_FRACTION = 0.1;
 const FAMILY_RANDOM_FIXED_ABS_RADIUS = 0.6;
@@ -130,6 +139,47 @@ function resolveMhrAssetConfig(target = globalThis) {
   };
 }
 
+function deriveLodPath(rawUrl, lod, { expectManifest = false } = {}) {
+  const url = new URL(String(rawUrl || ''), globalThis.location?.href || 'http://localhost/');
+  const nextPath = expectManifest
+    ? url.pathname.replace(/\/lod\d+\/manifest\.json$/i, `/lod${lod}/manifest.json`)
+    : url.pathname.replace(/\/lod\d+\/?$/i, `/lod${lod}/`);
+  if (nextPath === url.pathname) {
+    if (expectManifest) {
+      url.pathname = `/mhr-official/lod${lod}/manifest.json`;
+    } else {
+      url.pathname = `/mhr-official/lod${lod}/`;
+    }
+  } else {
+    url.pathname = nextPath;
+  }
+  return url.href;
+}
+
+function buildLodAssetConfig(baseAssetConfig, lod) {
+  const numericLod = Number(lod);
+  if (!Number.isInteger(numericLod) || numericLod < 0) {
+    throw new Error(`Invalid lod switch target: ${String(lod)}`);
+  }
+  const source = baseAssetConfig && typeof baseAssetConfig === 'object'
+    ? baseAssetConfig
+    : resolveMhrAssetConfig(globalThis);
+  return {
+    manifestUrl: deriveLodPath(source.manifestUrl, numericLod, { expectManifest: true }),
+    assetBaseUrl: deriveLodPath(source.assetBaseUrl || source.manifestUrl, numericLod),
+    lod: numericLod,
+  };
+}
+
+function formatLodOptionLabel(lod, vertexCount) {
+  const numericLod = Number(lod);
+  const numericVertexCount = Number(vertexCount);
+  if (Number.isInteger(numericVertexCount) && numericVertexCount > 0) {
+    return `${numericLod} (${numericVertexCount} verts)`;
+  }
+  return `${numericLod}`;
+}
+
 function isAdjustableParameter(parameter) {
   const min = Number(parameter?.min);
   const max = Number(parameter?.max);
@@ -145,6 +195,50 @@ function isFixedSlotParameter(parameter) {
   return Number.isFinite(min) && Number.isFinite(max) && min === max;
 }
 
+function isRootTranslationParameter(parameter) {
+  if (String(parameter?.stateSection || '') !== 'root') {
+    return false;
+  }
+  const key = String(parameter?.key || '').trim();
+  return (
+    /^root_t[xyz]$/i.test(key)
+    || /^translate[xyz]$/i.test(key)
+  );
+}
+
+function getUiWorkingBounds(parameter) {
+  const stateSection = String(parameter?.stateSection || '').trim();
+  if (stateSection === 'surfaceShape') {
+    return {
+      min: -UI_BLEND_ABS_RANGE,
+      max: UI_BLEND_ABS_RANGE,
+      step: 0.01,
+    };
+  }
+  if (stateSection === 'expression') {
+    return {
+      min: -UI_EXPRESSION_ABS_RANGE,
+      max: UI_EXPRESSION_ABS_RANGE,
+      step: 0.01,
+    };
+  }
+  if (stateSection === 'root') {
+    if (isRootTranslationParameter(parameter)) {
+      return {
+        min: -UI_ROOT_TRANSLATION_ABS_RANGE,
+        max: UI_ROOT_TRANSLATION_ABS_RANGE,
+        step: 0.05,
+      };
+    }
+    return {
+      min: -UI_ROOT_ROTATION_ABS_RANGE,
+      max: UI_ROOT_ROTATION_ABS_RANGE,
+      step: 0.01,
+    };
+  }
+  return null;
+}
+
 function getSliderBounds(parameter) {
   if (isFixedSlotParameter(parameter)) {
     return {
@@ -152,6 +246,10 @@ function getSliderBounds(parameter) {
       max: FIXED_SLOT_SLIDER_MAX,
       step: FIXED_SLOT_SLIDER_STEP,
     };
+  }
+  const working = getUiWorkingBounds(parameter);
+  if (working) {
+    return working;
   }
   const min = Number.isFinite(Number(parameter?.min)) ? Number(parameter.min) : -1;
   const max = Number.isFinite(Number(parameter?.max)) ? Number(parameter.max) : 1;
@@ -182,8 +280,7 @@ function clampToParameter(parameter, value) {
   if (isFixedSlotParameter(parameter)) {
     return numeric;
   }
-  const min = Number(parameter?.min);
-  const max = Number(parameter?.max);
+  const { min, max } = getSliderBounds(parameter);
   let next = numeric;
   if (Number.isFinite(min)) next = Math.max(min, next);
   if (Number.isFinite(max)) next = Math.min(max, next);
@@ -890,30 +987,33 @@ export async function registerPlayPlugin(host) {
     throw new Error('mhr_profile_plugin requires Play clock lanes (onUiMainTick/onUiControlsTick/onFrame).');
   }
 
-  if (typeof host.ui.kit?.fullRow !== 'function'
+  if (typeof host.ui.kit?.namedRow !== 'function'
+    || typeof host.ui.kit?.fullRow !== 'function'
     || typeof host.ui.kit?.button !== 'function'
     || typeof host.ui.kit?.boolButton !== 'function'
+    || typeof host.ui.kit?.select !== 'function'
     || typeof host.ui.kit?.range !== 'function'
     || typeof host.ui.kit?.textbox !== 'function') {
-    throw new Error('mhr_profile_plugin requires Play ui.kit.fullRow/button/boolButton/range/textbox.');
+    throw new Error('mhr_profile_plugin requires Play ui.kit.namedRow/fullRow/button/boolButton/select/range/textbox.');
   }
 
   const runtimeConfig = getRuntimeConfig();
   if (String(runtimeConfig?.ui?.profileId || 'play').trim().toLowerCase() !== 'mhr') {
     return () => {};
   }
+  const initialAssetConfig = resolveMhrAssetConfig(globalThis);
   const extensionState = host?.extensions?.mhr || null;
   let mhrService = extensionState?.service || null;
   let ownsService = false;
   if (!mhrService) {
-    const assetConfig = resolveMhrAssetConfig(globalThis);
-    mhrService = await createMhrService({ runtimeConfig, assetConfig });
+    mhrService = await createMhrService({ runtimeConfig, assetConfig: initialAssetConfig });
     ownsService = true;
     if (host?.extensions) {
       host.extensions.mhr = {
         service: mhrService,
         getSnapshot: () => mhrService.snapshot(),
         applyPatch: (statePatch, options) => mhrService.applyPatch(statePatch, options),
+        loadAssets: (assetConfig) => mhrService.loadAssets(assetConfig),
         hasPendingCommit: () => mhrService.hasPendingCommit(),
       };
     }
@@ -922,8 +1022,9 @@ export async function registerPlayPlugin(host) {
     || typeof mhrService.snapshot !== 'function'
     || typeof mhrService.subscribe !== 'function'
     || typeof mhrService.applyPatch !== 'function'
+    || typeof mhrService.loadAssets !== 'function'
     || typeof mhrService.hasPendingCommit !== 'function') {
-    throw new Error('mhr_profile_plugin requires an MHR service with snapshot/subscribe/applyPatch/hasPendingCommit.');
+    throw new Error('mhr_profile_plugin requires an MHR service with snapshot/subscribe/applyPatch/loadAssets/hasPendingCommit.');
   }
   if (typeof host?.renderer?.labelOverlay?.register !== 'function') {
     throw new Error('mhr_profile_plugin requires Play renderer.labelOverlay.register.');
@@ -971,16 +1072,19 @@ export async function registerPlayPlugin(host) {
     familyRandomEnabled: {
       scale: false,
       blend: false,
+      expression: false,
       pose: false,
       fixed: false,
     },
     familyRandomState: {
       scale: null,
       blend: null,
+      expression: null,
       pose: null,
       fixed: null,
     },
     familyRandomLastCommitTs: 0,
+    lodSwitchInFlight: false,
   };
   const perfHudState = {
     root: null,
@@ -1001,12 +1105,14 @@ export async function registerPlayPlugin(host) {
   const rowRegistry = {
     scale: new Map(),
     blend: new Map(),
+    expression: new Map(),
     fixed: new Map(),
     pose: new Map(),
   };
   const panelSignature = {
     scale: '',
     blend: '',
+    expression: '',
     fixed: '',
     pose: '',
   };
@@ -1025,17 +1131,26 @@ export async function registerPlayPlugin(host) {
     control: null,
     scale: null,
     blend: null,
+    expression: null,
     fixed: null,
     pose: null,
   };
   const sectionResetButtons = {
     scale: null,
     blend: null,
+    expression: null,
     fixed: null,
     pose: null,
   };
   const controlButtons = {
     ghost: null,
+  };
+  const controlRefs = {
+    lodRow: null,
+    lodLabel: null,
+    lodSelect: null,
+    lodMetadata: new Map(),
+    lodMetadataPromise: null,
   };
 
   function reportError(scopeLabel, error) {
@@ -1070,8 +1185,124 @@ export async function registerPlayPlugin(host) {
     return sunPresetPromise;
   }
 
+  function getCurrentAssetConfig(snapshot = mhrSnapshot) {
+    const assets = getMhrSnapshot(snapshot)?.assets || null;
+    if (assets?.manifestUrl) {
+      return {
+        manifestUrl: String(assets.manifestUrl || ''),
+        assetBaseUrl: String(assets.assetBaseUrl || ''),
+        lod: Number.isInteger(assets.lod) ? assets.lod : null,
+      };
+    }
+    return initialAssetConfig;
+  }
+
+  function currentLod(snapshot = mhrSnapshot) {
+    const assets = getMhrSnapshot(snapshot)?.assets || null;
+    if (Number.isInteger(assets?.lod)) {
+      return assets.lod;
+    }
+    return Number.isInteger(initialAssetConfig?.lod) ? initialAssetConfig.lod : 1;
+  }
+
+  function syncCurrentLodMetadata(snapshot = mhrSnapshot) {
+    const assets = getMhrSnapshot(snapshot)?.assets || null;
+    const lod = Number.isInteger(assets?.lod) ? assets.lod : currentLod(snapshot);
+    const vertexCount = Number(assets?.counts?.vertexCount || assets?.parameterMetadata?.counts?.vertexCount || 0);
+    if (Number.isInteger(lod) && vertexCount > 0) {
+      controlRefs.lodMetadata.set(lod, { vertexCount });
+    }
+  }
+
+  function updatePageLodState(assetConfig) {
+    globalThis.PLAY_MHR_MANIFEST_URL = assetConfig.manifestUrl;
+    globalThis.PLAY_MHR_ASSET_BASE_URL = assetConfig.assetBaseUrl;
+    globalThis.PLAY_MHR_LOD = assetConfig.lod;
+    try {
+      const nextUrl = new URL(globalThis.location.href);
+      nextUrl.searchParams.set('lod', String(assetConfig.lod));
+      globalThis.history?.replaceState?.(globalThis.history.state, '', nextUrl);
+    } catch {
+      // Ignore URL rewrite failures in non-browser environments.
+    }
+  }
+
+  function syncLodSelectRow() {
+    if (!controlRefs.lodSelect) {
+      return;
+    }
+    syncCurrentLodMetadata();
+    const activeLod = currentLod();
+    controlRefs.lodSelect.value = String(activeLod);
+    controlRefs.lodSelect.disabled = sceneState.lodSwitchInFlight;
+    for (const option of controlRefs.lodSelect.options) {
+      const lod = Number(option.value);
+      const metadata = controlRefs.lodMetadata.get(lod) || null;
+      option.textContent = formatLodOptionLabel(lod, metadata?.vertexCount ?? null);
+    }
+  }
+
+  async function ensureLodMetadataLoaded() {
+    if (controlRefs.lodMetadataPromise) {
+      return controlRefs.lodMetadataPromise;
+    }
+    const baseAssetConfig = getCurrentAssetConfig();
+    controlRefs.lodMetadataPromise = (async () => {
+      for (const lod of SUPPORTED_LODS) {
+        const manifest = await loadRuntimeIrManifest(buildLodAssetConfig(baseAssetConfig, lod), {
+          fetchImpl: globalThis.fetch?.bind(globalThis),
+        });
+        const vertexCount = Number(manifest?.counts?.vertexCount || 0);
+        if (vertexCount > 0) {
+          controlRefs.lodMetadata.set(lod, { vertexCount });
+        }
+      }
+      syncLodSelectRow();
+    })().catch((error) => {
+      reportError('lod-metadata', error);
+    }).finally(() => {
+      controlRefs.lodMetadataPromise = null;
+    });
+    return controlRefs.lodMetadataPromise;
+  }
+
+  async function switchLod(nextLod) {
+    const numericLod = Number(nextLod);
+    if (!Number.isInteger(numericLod) || numericLod < 0) {
+      return;
+    }
+    if (sceneState.lodSwitchInFlight || numericLod === currentLod()) {
+      syncLodSelectRow();
+      return;
+    }
+    sceneState.lodSwitchInFlight = true;
+    syncLodSelectRow();
+    try {
+      const nextAssetConfig = buildLodAssetConfig(getCurrentAssetConfig(), numericLod);
+      clearInfluencePreview();
+      sceneState.ghostCaptured = false;
+      if (sceneState.ghostHandle?.mesh) {
+        sceneState.ghostHandle.mesh.visible = false;
+      }
+      updateGhostButtonState();
+      await mhrService.loadAssets(nextAssetConfig);
+      syncCurrentLodMetadata();
+      updatePageLodState(nextAssetConfig);
+      controlsDirty = true;
+      sceneDirty = true;
+      host.renderer.ensureLoop?.();
+    } catch (error) {
+      reportError('lod-switch', error);
+    } finally {
+      sceneState.lodSwitchInFlight = false;
+      syncLodSelectRow();
+    }
+  }
+
   function onMhrSnapshot(nextSnapshot) {
     mhrSnapshot = nextSnapshot;
+    syncCurrentLodMetadata(nextSnapshot);
+    syncLodSelectRow();
     if (!sunPresetReady) {
       void ensureSunPreset();
     }
@@ -1289,6 +1520,9 @@ export async function registerPlayPlugin(host) {
   }
 
   function queueParameterValue(parameter, rawValue, options = {}) {
+    if (sceneState.lodSwitchInFlight) {
+      return;
+    }
     const numeric = Number(rawValue);
     const nextValue = clampToParameter(parameter, numeric);
     const trace = createTrace(parameter, options.source || 'ui', nextValue);
@@ -1311,6 +1545,9 @@ export async function registerPlayPlugin(host) {
   }
 
   function dispatchInteractiveParameterValue(parameter, rawValue, options = {}) {
+    if (sceneState.lodSwitchInFlight) {
+      return;
+    }
     const numeric = Number(rawValue);
     const nextValue = clampToParameter(parameter, numeric);
     holdInteractivePanelSync();
@@ -1395,6 +1632,13 @@ export async function registerPlayPlugin(host) {
     ));
   }
 
+  function getExpressionParameters() {
+    return getParameters().filter((parameter) => (
+      isAdjustableParameter(parameter)
+      && String(parameter.stateSection || '') === 'expression'
+    ));
+  }
+
   function getBlendRegionLabel(parameters, index) {
     const total = Array.isArray(parameters) ? parameters.length : 0;
     if (total <= 0) {
@@ -1451,6 +1695,8 @@ export async function registerPlayPlugin(host) {
         return getScaleParameters();
       case 'blend':
         return getBlendParameters();
+      case 'expression':
+        return getExpressionParameters();
       case 'pose':
         return getPoseFamilyParameters();
       case 'fixed':
@@ -1473,9 +1719,7 @@ export async function registerPlayPlugin(host) {
     }
     const center = getParameterDefaultValue(parameter);
     let halfRange = (max - min) * 0.5;
-    if (familyKey === 'blend') {
-      halfRange *= FAMILY_RANDOM_BLEND_RANGE_FRACTION;
-    } else if (familyKey === 'pose') {
+    if (familyKey === 'pose') {
       halfRange *= FAMILY_RANDOM_POSE_RANGE_FRACTION;
     } else if (familyKey === 'fixed') {
       halfRange = Math.min(
@@ -1492,6 +1736,12 @@ export async function registerPlayPlugin(host) {
   }
 
   function buildSmoothRandomTargetMap(parameters, familyKey) {
+    if (familyKey === 'blend') {
+      return buildBlendRandomTargetMap(parameters);
+    }
+    if (familyKey === 'expression') {
+      return buildFlatAbsoluteRandomTargetMap(parameters, FAMILY_RANDOM_EXPRESSION_ABS_RADIUS);
+    }
     const values = new Map();
     for (const parameter of parameters) {
       const key = String(parameter?.key || '').trim();
@@ -1506,6 +1756,38 @@ export async function registerPlayPlugin(host) {
         continue;
       }
       values.set(key, min + ((max - min) * sampleSmoothNormalized()));
+    }
+    return values;
+  }
+
+  function buildBlendRandomTargetMap(parameters) {
+    const values = new Map();
+    for (let index = 0; index < parameters.length; index += 1) {
+      const parameter = parameters[index];
+      const key = String(parameter?.key || '').trim();
+      if (!key) {
+        continue;
+      }
+      const center = getParameterDefaultValue(parameter);
+      const centered = (sampleSmoothNormalized() * 2) - 1;
+      const absRadius = index < FAMILY_RANDOM_BLEND_LEADING_COUNT
+        ? FAMILY_RANDOM_BLEND_LEADING_ABS_RADIUS
+        : FAMILY_RANDOM_BLEND_ABS_RADIUS;
+      values.set(key, center + (centered * absRadius));
+    }
+    return values;
+  }
+
+  function buildFlatAbsoluteRandomTargetMap(parameters, absRadius) {
+    const values = new Map();
+    for (const parameter of parameters) {
+      const key = String(parameter?.key || '').trim();
+      if (!key) {
+        continue;
+      }
+      const center = getParameterDefaultValue(parameter);
+      const centered = (sampleSmoothNormalized() * 2) - 1;
+      values.set(key, center + (centered * absRadius));
     }
     return values;
   }
@@ -1577,10 +1859,14 @@ export async function registerPlayPlugin(host) {
   }
 
   function driveFamilyRandomAnimation() {
+    if (sceneState.lodSwitchInFlight) {
+      return;
+    }
     const now = performance.now();
     const families = [
       ['scale', getFamilyParameters('scale')],
       ['blend', getFamilyParameters('blend')],
+      ['expression', getFamilyParameters('expression')],
       ['pose', getFamilyParameters('pose')],
       ['fixed', getFamilyParameters('fixed')],
     ];
@@ -1632,11 +1918,22 @@ export async function registerPlayPlugin(host) {
       host.renderer.ensureLoop?.();
       return;
     }
+    const patchedFamilies = new Set(
+      families
+        .filter(([familyKey]) => sceneState.familyRandomEnabled[familyKey])
+        .map(([familyKey]) => familyKey),
+    );
     mhrService.applyPatch(patch, {
       interactive: true,
       compareMode: DISPLAY_COMPARE_MODE,
-      ...(buildCurrentInfluencePreviewRequest() ? { previewInfluence: buildCurrentInfluencePreviewRequest() } : {}),
-    }).catch((error) => reportError('family-random:interactive', error));
+      previewInfluence: null,
+    }).catch((error) => {
+      for (const familyKey of patchedFamilies) {
+        sceneState.familyRandomEnabled[familyKey] = false;
+        sceneState.familyRandomState[familyKey] = null;
+      }
+      reportError('family-random:interactive', error);
+    });
     host.renderer.ensureLoop?.();
   }
 
@@ -1686,15 +1983,7 @@ export async function registerPlayPlugin(host) {
   }
 
   function getParameterStep(parameter) {
-    if (isFixedSlotParameter(parameter)) {
-      return FIXED_SLOT_SLIDER_STEP;
-    }
-    const min = Number(parameter?.min);
-    const max = Number(parameter?.max);
-    if (Number.isFinite(min) && Number.isFinite(max) && max > min) {
-      return Math.max((max - min) / 200, 0.001);
-    }
-    return 0.001;
+    return Number(getSliderBounds(parameter).step || 0.001);
   }
 
   function getRangeDisplayValue(parameter, value) {
@@ -1966,20 +2255,13 @@ export async function registerPlayPlugin(host) {
     return cell;
   }
 
-  function groupControlCells(cells, rowClass) {
-    const rows = [];
-    for (let index = 0; index < cells.length; index += 2) {
-      const row = document.createElement('div');
-      row.className = rowClass;
-      row.append(cells[index]);
-      if (cells[index + 1]) {
-        row.append(cells[index + 1]);
-      } else {
-        appendGridSpacer(row);
-      }
-      rows.push(row);
+  function createControlGrid(cells, gridClass) {
+    const grid = document.createElement('div');
+    grid.className = gridClass;
+    for (const cell of cells) {
+      grid.append(cell);
     }
-    return rows;
+    return grid;
   }
 
   function createActionCell({ label, testId, onClick }) {
@@ -2043,7 +2325,30 @@ export async function registerPlayPlugin(host) {
     });
     controlButtons.ghost = ghost.button;
     updateGhostButtonState();
-    return groupControlCells([align.row, ghost.row], 'mhr-control-action-row');
+    return createControlGrid([align.row, ghost.row], 'mhr-control-action-row');
+  }
+
+  function createLodControlRow() {
+    const { row, label, field } = kit.namedRow('LoD');
+    row.setAttribute('data-testid', 'mhr-lod-row');
+    const select = kit.select({
+      value: String(currentLod()),
+      options: SUPPORTED_LODS.map((lod) => ({
+        value: String(lod),
+        label: formatLodOptionLabel(lod, null),
+      })),
+      testId: 'mhr-lod-select',
+      onChange: (_event, nextValue) => {
+        void switchLod(Number(nextValue));
+      },
+    });
+    field.append(select);
+    controlRefs.lodRow = row;
+    controlRefs.lodLabel = label;
+    controlRefs.lodSelect = select;
+    syncLodSelectRow();
+    void ensureLodMetadataLoaded();
+    return row;
   }
 
   function createVisibilityToggle({ label, value, testId, onChange }) {
@@ -2083,8 +2388,30 @@ export async function registerPlayPlugin(host) {
     }
   }
 
-  function createDisplayVisibilityControls() {
+  function createPrimaryVisibilityControls() {
     const cells = [
+      {
+        label: 'Show skin',
+        value: sceneState.skinVisible,
+        testId: 'mhr-skin-visible',
+        onChange: (nextValue) => {
+          sceneState.skinVisible = nextValue;
+          syncMeshVisibility(sceneState, true);
+          sceneDirty = true;
+          host.renderer.ensureLoop?.();
+        },
+      },
+      {
+        label: 'Show skeleton',
+        value: sceneState.skeletonVisible,
+        testId: 'mhr-skeleton-visible',
+        onChange: (nextValue) => {
+          sceneState.skeletonVisible = nextValue;
+          syncSkeletonVisibility(sceneState);
+          sceneDirty = true;
+          host.renderer.ensureLoop?.();
+        },
+      },
       {
         label: 'Dark theme',
         value: sceneState.darkTheme,
@@ -2113,40 +2440,6 @@ export async function registerPlayPlugin(host) {
           host.renderer.ensureLoop?.();
         },
       },
-    ].map(createVisibilityToggle);
-    return groupControlCells(cells, 'mhr-control-bool-row');
-  }
-
-  function createSkinVisibilityControls() {
-    const cells = [
-      {
-        label: 'Show skin',
-        value: sceneState.skinVisible,
-        testId: 'mhr-skin-visible',
-        onChange: (nextValue) => {
-          sceneState.skinVisible = nextValue;
-          syncMeshVisibility(sceneState, true);
-          sceneDirty = true;
-          host.renderer.ensureLoop?.();
-        },
-      },
-      {
-        label: 'Show skeleton',
-        value: sceneState.skeletonVisible,
-        testId: 'mhr-skeleton-visible',
-        onChange: (nextValue) => {
-          sceneState.skeletonVisible = nextValue;
-          syncSkeletonVisibility(sceneState);
-          sceneDirty = true;
-          host.renderer.ensureLoop?.();
-        },
-      },
-    ].map(createVisibilityToggle);
-    return groupControlCells(cells, 'mhr-control-bool-row');
-  }
-
-  function createLocalAxesControls() {
-    const cells = [
       {
         label: 'Local axes',
         value: sceneState.jointAxesVisible,
@@ -2176,13 +2469,14 @@ export async function registerPlayPlugin(host) {
         },
       },
     ].map(createVisibilityToggle);
-    return groupControlCells(cells, 'mhr-control-bool-row');
+    return createControlGrid(cells, 'mhr-control-bool-row');
   }
 
   function createFreeBlendWarningRow() {
     const { row, field } = kit.fullRow();
     row.classList.add('control-static');
-    field.textContent = '* Free blend can be unsettling.';
+    field.classList.add('mhr-control-note-row');
+    field.textContent = '* Free blend and free expression can be unsettling.';
     return row;
   }
 
@@ -2200,9 +2494,9 @@ export async function registerPlayPlugin(host) {
         if (!nextValue) {
           sceneState.familyRandomState[item.key] = null;
           mhrService.applyPatch(buildResetPatch(parameters), {
-            interactive: false,
+            interactive: true,
             compareMode: DISPLAY_COMPARE_MODE,
-            ...(buildCurrentInfluencePreviewRequest() ? { previewInfluence: buildCurrentInfluencePreviewRequest() } : {}),
+            previewInfluence: null,
           }).catch((error) => {
             sceneState.familyRandomEnabled[item.key] = true;
             reportError(`family-random:${item.key}`, error);
@@ -2214,7 +2508,7 @@ export async function registerPlayPlugin(host) {
         host.renderer.ensureLoop?.();
       },
     }));
-    return groupControlCells(cells, 'mhr-control-bool-row');
+    return createControlGrid(cells, 'mhr-control-bool-row');
   }
 
   function renderScalePanel() {
@@ -2234,6 +2528,15 @@ export async function registerPlayPlugin(host) {
       getSeparatorLabel: getBlendRegionLabel,
     });
     updateResetButtonState('blend', parameters);
+  }
+
+  function renderExpressionPanel() {
+    const parameters = getExpressionParameters();
+    syncPanel('expression', sectionRoots.expression, parameters, {
+      emptyText: 'Expression parameters will appear after bundle load.',
+      testIdPrefix: 'mhr-expression',
+    });
+    updateResetButtonState('expression', parameters);
   }
 
   function renderFixedPanel() {
@@ -2359,6 +2662,7 @@ export async function registerPlayPlugin(host) {
     const revision = Number(getMhrSnapshot(mhrSnapshot)?.revision || 0);
     renderScalePanel();
     renderBlendPanel();
+    renderExpressionPanel();
     renderFixedPanel();
     renderPosePanel();
     lastRenderedAssetsKey = assetsKey;
@@ -2373,6 +2677,7 @@ export async function registerPlayPlugin(host) {
     }
     syncPanelValues('scale', getScaleParameters());
     syncPanelValues('blend', getBlendParameters());
+    syncPanelValues('expression', getExpressionParameters());
     syncPanelValues('fixed', getFixedSlotParameters());
     syncPanelValues('pose', getPoseParameters());
     lastRenderedRevision = Number(getMhrSnapshot(mhrSnapshot)?.revision || 0);
@@ -2399,16 +2704,14 @@ export async function registerPlayPlugin(host) {
       render(body) {
         const actionRows = createControlRow();
         body.append(
-          ...actionRows,
-          ...createSkinVisibilityControls(),
-          ...createDisplayVisibilityControls(),
-          ...createLocalAxesControls(),
+          actionRows,
+          createLodControlRow(),
+          createPrimaryVisibilityControls(),
           createFreeBlendWarningRow(),
-          ...createFamilyRandomControls([
+          createFamilyRandomControls([
             { key: 'scale', label: 'Free scale', testId: 'mhr-free-scale' },
             { key: 'blend', label: 'Free blend', testId: 'mhr-free-blend' },
-          ]),
-          ...createFamilyRandomControls([
+            { key: 'expression', label: 'Free expression', testId: 'mhr-free-expression' },
             { key: 'pose', label: 'Free pose', testId: 'mhr-free-pose' },
             { key: 'fixed', label: 'Free locked', testId: 'mhr-free-fixed' },
           ]),
@@ -2441,6 +2744,20 @@ export async function registerPlayPlugin(host) {
         sectionRoots.blend = root;
         body.append(resetRow, root);
         renderBlendPanel();
+      },
+    }),
+    host.ui.sections.register({
+      panel: 'left',
+      sectionId: 'plugin:mhr-expression',
+      title: getSectionTitle('Expression', 'expression'),
+      defaultOpen: true,
+      render(body) {
+        const resetRow = createSectionResetRow('expression', 'Reset', getExpressionParameters);
+        const root = document.createElement('div');
+        root.className = 'mhr-panel-stack';
+        sectionRoots.expression = root;
+        body.append(resetRow, root);
+        renderExpressionPanel();
       },
     }),
     host.ui.sections.register({
