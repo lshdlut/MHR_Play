@@ -36,7 +36,7 @@ export function dispatchCommand(handlers, message) {
   const decoded = decodeCommand(message);
   assertRequiredFields(`Command ${decoded.cmd}`, decoded.payload, COMMAND_FIELDS[decoded.cmd]?.required || []);
   const handler = handlers?.[decoded.cmd];
-  if (typeof handler !== 'function') throw new Error(`Unhandled command: ${decoded.cmd}`);
+  if (typeof handler !== "function") throw new Error(`Unhandled command: ${decoded.cmd}`);
   return handler(decoded.payload, message);
 }
 
@@ -60,6 +60,6 @@ export function dispatchEvent(handlers, message) {
   const decoded = decodeEvent(message);
   assertRequiredFields(`Event ${decoded.kind}`, decoded.payload, EVENT_FIELDS[decoded.kind]?.required || []);
   const handler = handlers?.[decoded.kind];
-  if (typeof handler !== 'function') throw new Error(`Unhandled event: ${decoded.kind}`);
+  if (typeof handler !== "function") throw new Error(`Unhandled event: ${decoded.kind}`);
   return handler(decoded.payload, message);
 }

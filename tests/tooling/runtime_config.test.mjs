@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const runtimeConfigModule = await import(
-  pathToFileURL(path.join(repoRoot, 'core', 'runtime_config.mjs')).href
+  pathToFileURL(path.join(repoRoot, 'mjwp_inject', 'plugin', 'profiles', 'mhr', 'core', 'runtime_config.mjs')).href
 );
 
 test('normalizeAssetConfig absolutizes manifest and asset base URLs against the target location', () => {

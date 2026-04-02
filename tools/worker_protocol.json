@@ -11,14 +11,31 @@
       "required": ["assetConfig"]
     },
     {
+      "name": "debugPing",
+      "category": "diagnostics",
+      "optional": ["mainSentTs"]
+    },
+    {
       "name": "setState",
       "category": "state_update",
       "required": ["statePatch"]
     },
     {
+      "name": "applyStateAndEvaluate",
+      "category": "evaluation",
+      "required": ["statePatch"],
+      "optional": ["compareMode", "__debugTiming"]
+    },
+    {
+      "name": "previewInfluence",
+      "category": "evaluation",
+      "required": ["previewId", "parameterKey"],
+      "optional": ["stateSection", "revision"]
+    },
+    {
       "name": "evaluate",
       "category": "evaluation",
-      "optional": ["compareMode"]
+      "optional": ["compareMode", "__debugTiming"]
     },
     {
       "name": "applyPreset",
@@ -48,6 +65,12 @@
       "optional": ["manifestUrl", "assetBaseUrl", "parameterCount"]
     },
     {
+      "name": "debugPong",
+      "category": "diagnostics",
+      "required": ["workerReceiveTs", "workerDispatchTs"],
+      "optional": ["mainSentTs"]
+    },
+    {
       "name": "stateUpdated",
       "category": "state_update",
       "required": ["revision", "state"]
@@ -55,7 +78,22 @@
     {
       "name": "evaluation",
       "category": "evaluation",
-      "required": ["evaluation"]
+      "required": ["evaluation"],
+      "optional": ["revision", "appliedStatePatch"]
+    },
+    {
+      "name": "influencePreview",
+      "category": "evaluation",
+      "required": [
+        "previewId",
+        "parameterKey",
+        "stateSection",
+        "revision",
+        "vertexCount",
+        "maxMagnitude",
+        "appliedDelta",
+        "magnitudes"
+      ]
     },
     {
       "name": "presetApplied",

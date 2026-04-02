@@ -1,5 +1,5 @@
 import { createInitialSnapshot } from '../../../backend/snapshot_utils.mjs';
-import { logWarn } from '../../../core/viewer_runtime.mjs';
+import { logWarn } from '../core/viewer_runtime.mjs';
 import { COMMAND_FIELDS, EVENT_FIELDS, WORKER_COMMANDS, WORKER_EVENTS } from '../worker/protocol.gen.mjs';
 import { normalizeAssetConfig } from '../core/runtime_config.mjs';
 

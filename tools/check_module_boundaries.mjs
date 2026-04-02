@@ -17,13 +17,11 @@ function shouldSkipFile(relPath) {
 
 function layerOf(relPath) {
   const p = toPosix(relPath);
-  if (p.startsWith('app/')) return 'entry';
-  if (p.startsWith('backend/')) return 'backend';
-  if (p.startsWith('core/')) return 'base';
-  if (p.startsWith('renderer/')) return 'renderer';
-  if (p.startsWith('ui/')) return 'ui';
-  if (p === 'worker/protocol.gen.mjs' || p === 'worker/dispatch.gen.mjs') return 'protocol';
-  if (p.startsWith('worker/')) return 'worker';
+  if (p === 'mjwp_inject/plugin/profiles/mhr/worker/protocol.gen.mjs' || p === 'mjwp_inject/plugin/profiles/mhr/worker/dispatch.gen.mjs') return 'protocol';
+  if (p.startsWith('mjwp_inject/plugin/profiles/mhr/core/')) return 'base';
+  if (p.startsWith('mjwp_inject/plugin/profiles/mhr/worker/')) return 'worker';
+  if (p.startsWith('mjwp_inject/plugin/profiles/mhr/backend/')) return 'backend';
+  if (p.startsWith('mjwp_inject/plugin/profiles/mhr/service/')) return 'service';
   return null;
 }
 
@@ -32,9 +30,7 @@ const ALLOWED_IMPORTS = {
   protocol: new Set(['protocol', 'base']),
   worker: new Set(['worker', 'protocol', 'base']),
   backend: new Set(['backend', 'protocol', 'base']),
-  ui: new Set(['ui', 'base']),
-  renderer: new Set(['renderer', 'base']),
-  entry: new Set(['entry', 'backend', 'renderer', 'ui', 'worker', 'protocol', 'base']),
+  service: new Set(['service', 'backend', 'protocol', 'base']),
 };
 
 const STATIC_IMPORT_RE = /\bimport\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;

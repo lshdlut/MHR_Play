@@ -43,6 +43,15 @@ function main() {
   assertClean(tracked, (entry) => entry === 'tools/dev_server.py', 'Legacy standalone dev server is forbidden.');
   assertClean(tracked, (entry) => entry === 'tools/export_site.py', 'Legacy site exporter is forbidden.');
   assertClean(tracked, (entry) => entry === 'tools/site_release_check.py', 'Legacy site release checker is forbidden.');
+  assertClean(tracked, (entry) => entry === 'core/asset_bundle.mjs', 'Root asset bundle runtime must be folded into mjwp_inject.');
+  assertClean(tracked, (entry) => entry === 'core/runtime_config.mjs', 'Root runtime config must be folded into mjwp_inject.');
+  assertClean(tracked, (entry) => entry === 'core/state_mapping.mjs', 'Root state mapping must be folded into mjwp_inject.');
+  assertClean(tracked, (entry) => entry === 'core/viewer_runtime.mjs', 'Root viewer runtime helper must be folded into mjwp_inject.');
+  assertClean(tracked, (entry) => entry === 'worker/protocol.gen.mjs', 'Root worker protocol must be folded into mjwp_inject.');
+  assertClean(tracked, (entry) => entry === 'worker/dispatch.gen.mjs', 'Root worker dispatch must be folded into mjwp_inject.');
+  assertClean(tracked, (entry) => entry === 'worker/mhr.worker.mjs', 'Root wasm worker entry must be folded into mjwp_inject.');
+  assertClean(tracked, (entry) => entry === 'worker/mhr_wasm_runtime.mjs', 'Root wasm runtime wrapper must be folded into mjwp_inject.');
+  assertClean(tracked, (entry) => entry === 'worker/mhr_runtime_wasm.gen.mjs', 'Root generated wasm runtime must be folded into mjwp_inject.');
   assertClean(tracked, (entry) => entry === 'doc/integration/play_split_recovery_audit.md', 'Split-recovery audit doc must stay local-only.');
   assertClean(tracked, (entry) => entry === 'doc/integration/mhr_backend_perf_investigation.md', 'Perf investigation doc must stay local-only.');
   assertClean(tracked, (entry) => entry === 'tests/tooling/full_cpu_stage_oracle.test.mjs', 'Deep stage-oracle test must stay out of the shipped repo.');

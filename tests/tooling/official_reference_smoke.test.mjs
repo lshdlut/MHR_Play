@@ -55,7 +55,19 @@ test('official oracle and preprocess smoke', async (t) => {
     const manifestB = JSON.parse(readFileSync(path.join(bundleOutB, 'manifest.json'), 'utf8'));
     assert.equal(manifestA.bundleFingerprint, manifestB.bundleFingerprint);
 
-    const bundleModule = await import(pathToFileURL(path.join(repoRoot, 'core', 'asset_bundle.mjs')).href);
+    const bundleModule = await import(
+      pathToFileURL(
+        path.join(
+          repoRoot,
+          'mjwp_inject',
+          'plugin',
+          'profiles',
+          'mhr',
+          'core',
+          'asset_bundle.mjs',
+        ),
+      ).href,
+    );
     const summary = bundleModule.validateProcessedBundleManifest(manifestA);
     assert.ok(summary.chunkCount >= 10);
     assert.ok(summary.parameterCount >= 300);

@@ -21,8 +21,8 @@ test('module boundaries pass', () => {
 });
 
 test('protocol generator is stable', () => {
-  const protocolPath = path.join(repoRoot, 'worker', 'protocol.gen.mjs');
-  const dispatchPath = path.join(repoRoot, 'worker', 'dispatch.gen.mjs');
+  const protocolPath = path.join(repoRoot, 'mjwp_inject', 'plugin', 'profiles', 'mhr', 'worker', 'protocol.gen.mjs');
+  const dispatchPath = path.join(repoRoot, 'mjwp_inject', 'plugin', 'profiles', 'mhr', 'worker', 'dispatch.gen.mjs');
   const beforeProtocol = readFileSync(protocolPath, 'utf8');
   const beforeDispatch = readFileSync(dispatchPath, 'utf8');
 
@@ -34,9 +34,9 @@ test('protocol generator is stable', () => {
   assert.equal(afterDispatch, beforeDispatch);
 });
 
-test('shared runtime modules expose expected surfaces', async () => {
-  const configModule = await import(pathToFileURL(path.join(repoRoot, 'core', 'runtime_config.mjs')).href);
-  const bundleModule = await import(pathToFileURL(path.join(repoRoot, 'core', 'asset_bundle.mjs')).href);
+test('play-hosted runtime modules expose expected surfaces', async () => {
+  const configModule = await import(pathToFileURL(path.join(repoRoot, 'mjwp_inject', 'plugin', 'profiles', 'mhr', 'core', 'runtime_config.mjs')).href);
+  const bundleModule = await import(pathToFileURL(path.join(repoRoot, 'mjwp_inject', 'plugin', 'profiles', 'mhr', 'core', 'asset_bundle.mjs')).href);
 
   assert.equal(typeof configModule.normalizeAssetConfig, 'function');
   assert.equal(typeof bundleModule.validateProcessedBundleManifest, 'function');
@@ -83,6 +83,15 @@ test('legacy standalone product files are absent', () => {
     'tools/dev_server.py',
     'tools/export_site.py',
     'tools/site_release_check.py',
+    'core/asset_bundle.mjs',
+    'core/runtime_config.mjs',
+    'core/state_mapping.mjs',
+    'core/viewer_runtime.mjs',
+    'worker/protocol.gen.mjs',
+    'worker/dispatch.gen.mjs',
+    'worker/mhr.worker.mjs',
+    'worker/mhr_wasm_runtime.mjs',
+    'worker/mhr_runtime_wasm.gen.mjs',
   ];
   for (const relative of forbiddenPaths) {
     assert.equal(existsSync(path.join(repoRoot, relative)), false, `forbidden legacy path still exists: ${relative}`);

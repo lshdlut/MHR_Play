@@ -39,7 +39,19 @@ test('preprocess pipeline is deterministic and manifest-valid', async () => {
     const manifestB = JSON.parse(readFileSync(path.join(outB, 'manifest.json'), 'utf8'));
 
     assert.equal(manifestA.bundleFingerprint, manifestB.bundleFingerprint);
-    const bundleModule = await import(pathToFileURL(path.join(repoRoot, 'core', 'asset_bundle.mjs')).href);
+    const bundleModule = await import(
+      pathToFileURL(
+        path.join(
+          repoRoot,
+          'mjwp_inject',
+          'plugin',
+          'profiles',
+          'mhr',
+          'core',
+          'asset_bundle.mjs',
+        ),
+      ).href,
+    );
     const validated = bundleModule.validateProcessedBundleManifest(manifestA);
     assert.equal(validated.bundleId, 'minimal-human-fixture');
     assert.equal(validated.chunkCount, 16);

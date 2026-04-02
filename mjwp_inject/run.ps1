@@ -157,24 +157,13 @@ Write-Host "[mjwp_inject] copying MHR plugin and page files"
 Copy-TreeIntoRoot $pluginRoot $playClone
 Copy-TreeIntoRoot $siteRoot $playClone
 
-Write-Host "[mjwp_inject] copying shared runtime modules"
-$sharedCopies = @(
-    @{ source = (Join-Path $repoRoot "core\\asset_bundle.mjs"); destination = (Join-Path $playClone "mhr_shared\\core\\asset_bundle.mjs") },
-    @{ source = (Join-Path $repoRoot "core\\runtime_config.mjs"); destination = (Join-Path $playClone "mhr_shared\\core\\runtime_config.mjs") },
-    @{ source = (Join-Path $repoRoot "core\\state_mapping.mjs"); destination = (Join-Path $playClone "mhr_shared\\core\\state_mapping.mjs") },
-    @{ source = (Join-Path $repoRoot "worker\\mhr_runtime_wasm.gen.mjs"); destination = (Join-Path $playClone "mhr_shared\\worker\\mhr_runtime_wasm.gen.mjs") }
-)
-foreach ($entry in $sharedCopies) {
-    Copy-FileIntoRoot $entry.source $entry.destination
-}
-
 $meta = @{
     repoRoot = $repoRoot
     playSrc = $playSrcAbs
     playRef = if ($PlayRef) { $PlayRef } else { "" }
     appliedAt = (Get-Date).ToString("o")
     patchCount = @($patches).Count
-    sharedCopies = @($sharedCopies | ForEach-Object { $_.destination.Replace($playClone, "").TrimStart('\') })
+    sharedCopies = @()
 }
 $meta | ConvertTo-Json | Set-Content -LiteralPath $metaPath -Encoding UTF8
 

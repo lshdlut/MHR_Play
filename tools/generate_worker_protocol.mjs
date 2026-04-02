@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 const specPath = path.join(repoRoot, 'tools', 'worker_protocol.json');
-const outDir = path.join(repoRoot, 'worker');
+const outDir = path.join(repoRoot, 'mjwp_inject', 'plugin', 'profiles', 'mhr', 'worker');
 const protocolOutPath = path.join(outDir, 'protocol.gen.mjs');
 const dispatchOutPath = path.join(outDir, 'dispatch.gen.mjs');
 

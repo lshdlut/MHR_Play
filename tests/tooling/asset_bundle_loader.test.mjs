@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const bundleModule = await import(
-  pathToFileURL(path.join(repoRoot, 'core', 'asset_bundle.mjs')).href
+  pathToFileURL(path.join(repoRoot, 'mjwp_inject', 'plugin', 'profiles', 'mhr', 'core', 'asset_bundle.mjs')).href
 );
 const fixtureManifest = JSON.parse(
   readFileSync(path.join(repoRoot, 'tests', 'fixtures', 'processed_bundle', 'manifest.json'), 'utf8'),

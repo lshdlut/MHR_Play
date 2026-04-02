@@ -62,7 +62,11 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = repo_root_from_here(__file__)
-    out_path = Path(args.out).resolve() if args.out else (repo_root / "worker" / "mhr_runtime_wasm.gen.mjs")
+    out_path = (
+        Path(args.out).resolve()
+        if args.out
+        else (repo_root / "mjwp_inject" / "plugin" / "profiles" / "mhr" / "worker" / "mhr_runtime_wasm.gen.mjs")
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     emcc = resolve_emcc()
