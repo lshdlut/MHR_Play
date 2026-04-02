@@ -34,16 +34,11 @@ test('protocol generator is stable', () => {
   assert.equal(afterDispatch, beforeDispatch);
 });
 
-test('public modules expose expected surfaces', async () => {
-  const mountModule = await import(pathToFileURL(path.join(repoRoot, 'app', 'mount.mjs')).href);
-  const hostModule = await import(pathToFileURL(path.join(repoRoot, 'app', 'mhr_play_host.mjs')).href);
+test('shared runtime modules expose expected surfaces', async () => {
   const configModule = await import(pathToFileURL(path.join(repoRoot, 'core', 'runtime_config.mjs')).href);
   const bundleModule = await import(pathToFileURL(path.join(repoRoot, 'core', 'asset_bundle.mjs')).href);
 
-  assert.equal(typeof mountModule.mountMhrPlay, 'function');
-  assert.equal(typeof hostModule.createMhrPlayHost, 'function');
-  assert.equal(typeof configModule.getRuntimeConfig, 'function');
-  assert.equal(typeof configModule.resolveMountConfig, 'function');
+  assert.equal(typeof configModule.normalizeAssetConfig, 'function');
   assert.equal(typeof bundleModule.validateProcessedBundleManifest, 'function');
   assert.equal(typeof bundleModule.loadProcessedBundleManifest, 'function');
   assert.equal(typeof bundleModule.validateProcessedBundleChunks, 'function');
@@ -66,7 +61,7 @@ test('contract documents are present', () => {
     'doc/contracts/parity_contract.md',
     'doc/contracts/asset_manifest_contract.md',
     'doc/contracts/asset_bundle_format.md',
-    'doc/site_release_checklist.md',
+    'doc/integration/play_mhr_integration.md',
     'tests/golden_cases/manifest.json',
   ];
   for (const docPath of requiredDocs) {
@@ -74,10 +69,22 @@ test('contract documents are present', () => {
   }
 });
 
-test('worker default runtime path is IR-backed', () => {
-  const workerSource = readFileSync(path.join(repoRoot, 'worker', 'mhr.worker.mjs'), 'utf8');
-  assert.equal(workerSource.includes('loadRuntimeIrManifest'), true);
-  assert.equal(workerSource.includes('loadRuntimeIrChunks'), true);
-  assert.equal(workerSource.includes('loadProcessedBundleManifest'), false);
-  assert.equal(workerSource.includes('loadProcessedBundleChunks'), false);
+test('legacy standalone product files are absent', () => {
+  const forbiddenPaths = [
+    'index.html',
+    'embed.html',
+    'app',
+    'backend',
+    'renderer',
+    'ui',
+    'demo_assets',
+    'tools/build_demo_bundle.py',
+    'tools/browser_smoke.py',
+    'tools/dev_server.py',
+    'tools/export_site.py',
+    'tools/site_release_check.py',
+  ];
+  for (const relative of forbiddenPaths) {
+    assert.equal(existsSync(path.join(repoRoot, relative)), false, `forbidden legacy path still exists: ${relative}`);
+  }
 });

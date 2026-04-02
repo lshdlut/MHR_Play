@@ -194,7 +194,6 @@ Write-Host "[mjwp_inject] serving play clone on port $Port (Ctrl+C to stop)"
     --repo-root $repoRoot `
     --forge-root $playForgeRoot `
     --official-root $officialRuntimeIrDir `
-    --demo-root (Join-Path $repoRoot "demo_assets") `
     --port $Port
 if ($LASTEXITCODE -ne 0) {
     throw "mjwp_inject/server.py failed with exit code $LASTEXITCODE"

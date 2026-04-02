@@ -84,19 +84,16 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=4173)
     parser.add_argument("--forge-root", default="")
     parser.add_argument("--official-root", default="")
-    parser.add_argument("--demo-root", default="")
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
     repo_root = Path(args.repo_root).resolve()
     forge_root = Path(args.forge_root).resolve() if args.forge_root else None
     official_root = Path(args.official_root).resolve() if args.official_root else (repo_root / "local_tools" / "official_runtime_ir")
-    demo_root = Path(args.demo_root).resolve() if args.demo_root else (repo_root / "demo_assets")
 
     os.chdir(root)
     mounts: dict[str, Path] = {
         "/mhr-official/": official_root,
-        "/mhr-demo/": demo_root,
     }
     if forge_root and forge_root.exists():
         mounts["/forge/"] = forge_root

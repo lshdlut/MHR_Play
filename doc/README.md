@@ -17,10 +17,6 @@ This repository keeps the M0-M3 contracts in `doc/contracts/`.
 - `attribution_note.md`
 - `runtime_ir_format.md`
 
-## Release
-
-- `site_release_checklist.md`
-
 ## Integration
 
 - `integration/play_mhr_integration.md`

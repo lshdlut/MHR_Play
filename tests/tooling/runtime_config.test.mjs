@@ -8,84 +8,26 @@ const runtimeConfigModule = await import(
   pathToFileURL(path.join(repoRoot, 'core', 'runtime_config.mjs')).href
 );
 
-test('standalone bootstrap falls back to URL-derived manifest config', () => {
-  const resolved = runtimeConfigModule.resolveMountConfig({
-    target: {
-      __MHR_PLAY_RUNTIME_CONFIG__: {
-        startup: {
-          standaloneShell: true,
-          assetManifestUrl: '/bundles/from-url/manifest.json',
-        },
-        ui: {
-          defaultCompareMode: 'skin',
-        },
-        host: {
-          mode: 'standalone-dev-shell',
-        },
+test('normalizeAssetConfig absolutizes manifest and asset base URLs against the target location', () => {
+  const normalized = runtimeConfigModule.normalizeAssetConfig(
+    {
+      manifestUrl: './bundles/lod1/manifest.json',
+      assetBaseUrl: './bundles/lod1/',
+    },
+    {
+      location: {
+        href: 'http://127.0.0.1:4173/mhr.html',
       },
     },
-  });
+  );
 
-  assert.equal(resolved.runtimeConfig.startup.standaloneShell, true);
-  assert.equal(resolved.runtimeConfig.host.mode, 'standalone-dev-shell');
-  assert.equal(resolved.assetConfig.manifestUrl, '/bundles/from-url/manifest.json');
+  assert.equal(normalized.manifestUrl, 'http://127.0.0.1:4173/bundles/lod1/manifest.json');
+  assert.equal(normalized.assetBaseUrl, 'http://127.0.0.1:4173/bundles/lod1/');
 });
 
-test('explicit runtime and asset config override standalone bootstrap input', () => {
-  const resolved = runtimeConfigModule.resolveMountConfig({
-    target: {
-      __MHR_PLAY_RUNTIME_CONFIG__: {
-        startup: {
-          standaloneShell: true,
-          assetManifestUrl: '/bundles/from-url/manifest.json',
-        },
-        host: {
-          mode: 'standalone-dev-shell',
-        },
-      },
-    },
-    runtimeConfig: {
-      startup: {
-        standaloneShell: false,
-      },
-      ui: {
-        theme: 'copper',
-      },
-    },
-    assetConfig: {
-      manifestUrl: '/bundles/embed/manifest.json',
-      assetBaseUrl: '/bundles/embed/',
-    },
-  });
-
-  assert.equal(resolved.runtimeConfig.startup.standaloneShell, false);
-  assert.equal(resolved.runtimeConfig.host.mode, 'embed');
-  assert.equal(resolved.runtimeConfig.ui.embedMode, true);
-  assert.equal(resolved.assetConfig.manifestUrl, '/bundles/embed/manifest.json');
-  assert.equal(resolved.assetConfig.assetBaseUrl, '/bundles/embed/');
-});
-
-test('embed runtime without explicit asset config does not consume bootstrap URL manifest', () => {
-  const resolved = runtimeConfigModule.resolveMountConfig({
-    target: {
-      __MHR_PLAY_RUNTIME_CONFIG__: {
-        startup: {
-          standaloneShell: true,
-          assetManifestUrl: '/bundles/from-url/manifest.json',
-        },
-      },
-    },
-    runtimeConfig: {
-      startup: {
-        standaloneShell: false,
-      },
-      host: {
-        mode: 'embed',
-      },
-    },
-  });
-
-  assert.equal(resolved.runtimeConfig.host.mode, 'embed');
-  assert.equal(resolved.runtimeConfig.startup.assetManifestUrl, '');
-  assert.equal(resolved.assetConfig.manifestUrl, '');
+test('normalizeAssetConfig preserves empty values and returns a frozen object', () => {
+  const normalized = runtimeConfigModule.normalizeAssetConfig({}, { location: { href: 'http://127.0.0.1:4173/mhr.html' } });
+  assert.equal(normalized.manifestUrl, '');
+  assert.equal(normalized.assetBaseUrl, '');
+  assert.equal(Object.isFrozen(normalized), true);
 });
