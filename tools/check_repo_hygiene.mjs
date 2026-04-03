@@ -52,6 +52,9 @@ function main() {
   assertClean(tracked, (entry) => entry === 'worker/mhr.worker.mjs', 'Root wasm worker entry must be folded into mjwp_inject.');
   assertClean(tracked, (entry) => entry === 'worker/mhr_wasm_runtime.mjs', 'Root wasm runtime wrapper must be folded into mjwp_inject.');
   assertClean(tracked, (entry) => entry === 'worker/mhr_runtime_wasm.gen.mjs', 'Root generated wasm runtime must be folded into mjwp_inject.');
+  assertClean(tracked, (entry) => entry.startsWith('doc/contracts/'), 'Non-user contract docs must not stay in the tracked public docs set.');
+  assertClean(tracked, (entry) => entry.startsWith('doc/archive/'), 'Archived internal docs must stay local-only and untracked.');
+  assertClean(tracked, (entry) => entry === 'doc/mhr_momentum_runtime_design.md', 'Top-level runtime design notes must stay local-only.');
   assertClean(tracked, (entry) => entry === 'doc/integration/play_split_recovery_audit.md', 'Split-recovery audit doc must stay local-only.');
   assertClean(tracked, (entry) => entry === 'doc/integration/mhr_backend_perf_investigation.md', 'Perf investigation doc must stay local-only.');
   assertClean(tracked, (entry) => entry === 'tests/tooling/full_cpu_stage_oracle.test.mjs', 'Deep stage-oracle test must stay out of the shipped repo.');

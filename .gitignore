@@ -19,3 +19,4 @@ tmp/
 .playwright-cli/
 .mjwp_inject_server.pid
 .mjwp_inject_server.*
+doc/archive/

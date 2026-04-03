@@ -48,19 +48,13 @@ test('play-hosted runtime modules expose expected surfaces', async () => {
   assert.equal(typeof bundleModule.loadRuntimeIrChunks, 'function');
 });
 
-test('contract documents are present', () => {
+test('user-facing docs are present', () => {
   const requiredDocs = [
     'ARCHITECTURE.md',
     '.repo_local_config.example.json',
-    'doc/contracts/out_of_scope.md',
-    'doc/contracts/state_schema.md',
-    'doc/contracts/panel_schema.md',
-    'doc/contracts/semantic_to_raw_mapping.md',
-    'doc/contracts/worker_protocol.md',
-    'doc/contracts/host_integration.md',
-    'doc/contracts/parity_contract.md',
-    'doc/contracts/asset_manifest_contract.md',
-    'doc/contracts/asset_bundle_format.md',
+    'README.md',
+    'README.zh-CN.md',
+    'doc/README.md',
     'doc/integration/play_mhr_integration.md',
     'tests/golden_cases/manifest.json',
   ];

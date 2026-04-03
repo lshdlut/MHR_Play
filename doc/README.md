@@ -1,29 +1,16 @@
-# Documentation Index
+# Documentation
 
-This repository keeps the M0-M3 contracts in `doc/contracts/`.
+This directory keeps only user-facing documentation.
 
-## Contracts
+## Start Here
 
-- `out_of_scope.md`
-- `state_schema.md`
-- `panel_schema.md`
-- `semantic_to_raw_mapping.md`
-- `worker_protocol.md`
-- `host_integration.md`
-- `parity_contract.md`
-- `asset_manifest_contract.md`
-- `asset_bundle_format.md`
-- `distribution_note.md`
-- `attribution_note.md`
-- `runtime_ir_format.md`
+- `../README.md`: public overview, screenshots, and quickstart
+- `../README.zh-CN.md`: Chinese public overview
+- `../mjwp_inject/README.md`: how to assemble and run the Play-hosted MHR page
+- `integration/play_mhr_integration.md`: downstream Play assembly model
 
-## Integration
+## Local Archive
 
-- `integration/play_mhr_integration.md`
-
-Development-only investigations and recovery audits stay local-only and should
-not be tracked in the published repo history.
-
-## Top-Level Runtime Charter
-
-- `../ARCHITECTURE.md`
+Internal contracts, historical design notes, and investigation writeups are now
+treated as local-only archive material. They are intentionally ignored by git
+and are no longer part of the public documentation set.
