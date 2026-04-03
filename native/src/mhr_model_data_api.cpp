@@ -145,6 +145,10 @@ struct CompiledModel final {
   const uint32_t* prefix_mul_level_offsets = nullptr;
   const uint32_t* prefix_mul_source = nullptr;
   const uint32_t* prefix_mul_target = nullptr;
+  const uint32_t* pose_block_feature_offsets = nullptr;
+  const uint32_t* pose_block_hidden_offsets = nullptr;
+  const uint32_t* corrective_block_row_offsets = nullptr;
+  const uint32_t* corrective_block_row_index = nullptr;
   const int32_t* joint_parents = nullptr;
   uint32_t prefix_mul_level_count = 0;
   uint32_t prefix_mul_pair_count = 0;
@@ -178,7 +182,12 @@ struct WorkspaceData final {
   std::vector<float> skeleton;
   std::vector<float> derived;
   MhrRuntimeDebugTiming timing{};
+  bool cache_available = false;
   bool evaluated = false;
+  bool derived_valid = false;
+  bool model_parameters_dirty = true;
+  bool identity_dirty = true;
+  bool expression_dirty = true;
   std::string last_error;
 };
 
@@ -229,6 +238,105 @@ float elapsed_ms(
     const SteadyClock::time_point& end) {
   return std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(end - start)
       .count();
+}
+
+bool float_vector_matches(
+    const std::vector<float>& current,
+    const float* incoming,
+    uint32_t count) {
+  return current.size() == static_cast<size_t>(count) &&
+         std::equal(current.begin(), current.end(), incoming);
+}
+
+bool float_vector_equal(
+    const std::vector<float>& left,
+    const std::vector<float>& right) {
+  return left.size() == right.size() &&
+         std::equal(left.begin(), left.end(), right.begin());
+}
+
+struct ActiveBasisTerm final {
+  const float* basis = nullptr;
+  float coefficient = 0.0f;
+};
+
+std::vector<ActiveBasisTerm> build_active_basis_terms(
+    const float* basis_table,
+    const std::vector<float>& coefficients,
+    size_t value_count) {
+  std::vector<ActiveBasisTerm> active_terms;
+  active_terms.reserve(coefficients.size());
+  for (size_t index = 0; index < coefficients.size(); ++index) {
+    const float coefficient = coefficients[index];
+    if (coefficient == 0.0f) {
+      continue;
+    }
+    active_terms.push_back(
+        ActiveBasisTerm{basis_table + index * value_count, coefficient});
+  }
+  return active_terms;
+}
+
+void accumulate_active_basis_terms(
+    std::vector<float>* target,
+    const std::vector<ActiveBasisTerm>& active_terms) {
+  if (target == nullptr || active_terms.empty()) {
+    return;
+  }
+  for (const ActiveBasisTerm& term : active_terms) {
+    float* out = target->data();
+    const float* basis = term.basis;
+    const float coefficient = term.coefficient;
+    for (size_t offset = 0; offset < target->size(); ++offset) {
+      out[offset] += basis[offset] * coefficient;
+    }
+  }
+}
+
+void compose_rest_vertices(
+    const std::vector<float>& rest_vertices_pre_corrective,
+    const std::vector<float>& corrective_delta,
+    std::vector<float>* rest_vertices) {
+  if (rest_vertices == nullptr) {
+    return;
+  }
+  for (size_t index = 0; index < rest_vertices->size(); ++index) {
+    (*rest_vertices)[index] =
+        rest_vertices_pre_corrective[index] + corrective_delta[index];
+  }
+}
+
+void compose_rest_vertices_rows(
+    const std::vector<float>& rest_vertices_pre_corrective,
+    const std::vector<float>& corrective_delta,
+    const std::vector<uint32_t>& touched_rows,
+    std::vector<float>* rest_vertices) {
+  if (rest_vertices == nullptr) {
+    return;
+  }
+  for (const uint32_t row : touched_rows) {
+    (*rest_vertices)[row] = rest_vertices_pre_corrective[row] + corrective_delta[row];
+  }
+}
+
+uint32_t find_pose_block_for_hidden_index(
+    const uint32_t* hidden_offsets,
+    uint32_t block_count,
+    uint32_t hidden_index) {
+  const uint32_t* begin = hidden_offsets;
+  const uint32_t* end = hidden_offsets + block_count + 1U;
+  const uint32_t* upper = std::upper_bound(begin, end, hidden_index);
+  if (upper == begin) {
+    return 0;
+  }
+  const ptrdiff_t block_index = (upper - begin) - 1;
+  if (block_index < 0) {
+    return 0;
+  }
+  if (static_cast<uint32_t>(block_index) >= block_count) {
+    return block_count == 0 ? 0 : block_count - 1U;
+  }
+  return static_cast<uint32_t>(block_index);
 }
 
 #ifdef _WIN32
@@ -1069,6 +1177,10 @@ bool validate_bundle(CompiledModel* model, const MhrBundleView& bundle_view) {
   model->prefix_mul_level_offsets = array_data<uint32_t>(prefix_mul_level_offsets);
   model->prefix_mul_source = array_data<uint32_t>(prefix_mul_source);
   model->prefix_mul_target = array_data<uint32_t>(prefix_mul_target);
+  model->pose_block_feature_offsets = array_data<uint32_t>(pose_block_feature_offsets);
+  model->pose_block_hidden_offsets = array_data<uint32_t>(pose_block_hidden_offsets);
+  model->corrective_block_row_offsets = array_data<uint32_t>(corrective_block_row_offsets);
+  model->corrective_block_row_index = array_data<uint32_t>(corrective_block_row_index);
   model->joint_parents = array_data<int32_t>(joint_parents);
   model->prefix_mul_level_count = static_cast<uint32_t>(prefix_mul_level_offsets.shape[0] - 1U);
   model->prefix_mul_pair_count = static_cast<uint32_t>(prefix_mul_source.shape[0]);
@@ -1254,6 +1366,12 @@ MhrData* mhr_data_create(const MhrModel* model) {
   data->impl.output_vertices.assign(static_cast<size_t>(counts.vertex_count) * 3U, 0.0f);
   data->impl.skeleton.assign(static_cast<size_t>(counts.joint_count) * 8U, 0.0f);
   data->impl.derived.assign(kDerivedValueCount, 0.0f);
+  data->impl.cache_available = false;
+  data->impl.evaluated = false;
+  data->impl.derived_valid = false;
+  data->impl.model_parameters_dirty = true;
+  data->impl.identity_dirty = true;
+  data->impl.expression_dirty = true;
   return data;
 }
 
@@ -1289,7 +1407,12 @@ int mhr_data_reset(const MhrModel* model, MhrData* data) {
   std::fill(data->impl.skeleton.begin(), data->impl.skeleton.end(), 0.0f);
   std::fill(data->impl.derived.begin(), data->impl.derived.end(), 0.0f);
   data->impl.timing = {};
+  data->impl.cache_available = false;
   data->impl.evaluated = false;
+  data->impl.derived_valid = false;
+  data->impl.model_parameters_dirty = true;
+  data->impl.identity_dirty = true;
+  data->impl.expression_dirty = true;
   data->impl.last_error.clear();
   return 1;
 }
@@ -1328,8 +1451,13 @@ int mhr_data_set_model_parameters(
     data->impl.last_error = "Model parameter count does not match model.";
     return 0;
   }
+  if (float_vector_matches(data->impl.model_parameters, values, count)) {
+    return 1;
+  }
   data->impl.model_parameters.assign(values, values + count);
+  data->impl.model_parameters_dirty = true;
   data->impl.evaluated = false;
+  data->impl.derived_valid = false;
   return 1;
 }
 
@@ -1345,8 +1473,13 @@ int mhr_data_set_identity(
     data->impl.last_error = "Identity count does not match model.";
     return 0;
   }
+  if (float_vector_matches(data->impl.identity, values, count)) {
+    return 1;
+  }
   data->impl.identity.assign(values, values + count);
+  data->impl.identity_dirty = true;
   data->impl.evaluated = false;
+  data->impl.derived_valid = false;
   return 1;
 }
 
@@ -1362,8 +1495,13 @@ int mhr_data_set_expression(
     data->impl.last_error = "Expression count does not match model.";
     return 0;
   }
+  if (float_vector_matches(data->impl.expression, values, count)) {
+    return 1;
+  }
   data->impl.expression.assign(values, values + count);
+  data->impl.expression_dirty = true;
   data->impl.evaluated = false;
+  data->impl.derived_valid = false;
   return 1;
 }
 
@@ -1372,312 +1510,510 @@ int mhr_forward(const MhrModel* model, MhrData* data, uint32_t flags) {
     return 0;
   }
 
-  data->impl.timing = {};
+  auto& impl = data->impl;
+  const auto& compiled = model->impl;
+  const MhrModelCounts& counts = compiled.counts;
   const auto evaluate_start = SteadyClock::now();
-  std::fill(data->impl.parameter_inputs.begin(), data->impl.parameter_inputs.end(), 0.0f);
-  std::fill(data->impl.joint_parameters_fp64.begin(), data->impl.joint_parameters_fp64.end(), 0.0);
-  std::fill(data->impl.world_transforms_fp64.begin(), data->impl.world_transforms_fp64.end(), Transform{});
-  std::fill(data->impl.joint_parameters.begin(), data->impl.joint_parameters.end(), 0.0f);
-  std::fill(data->impl.local_transforms.begin(), data->impl.local_transforms.end(), 0.0f);
-  std::fill(data->impl.global_transforms.begin(), data->impl.global_transforms.end(), 0.0f);
-  std::fill(data->impl.skin_transforms.begin(), data->impl.skin_transforms.end(), 0.0f);
-  std::fill(data->impl.pose_features.begin(), data->impl.pose_features.end(), 0.0f);
-  std::fill(data->impl.hidden.begin(), data->impl.hidden.end(), 0.0f);
-  std::fill(data->impl.corrective_delta.begin(), data->impl.corrective_delta.end(), 0.0f);
-  std::fill(data->impl.rest_vertices_pre_corrective.begin(), data->impl.rest_vertices_pre_corrective.end(), 0.0f);
-  std::fill(data->impl.rest_vertices.begin(), data->impl.rest_vertices.end(), 0.0f);
-  std::fill(data->impl.output_vertices.begin(), data->impl.output_vertices.end(), 0.0f);
-  std::fill(data->impl.skeleton.begin(), data->impl.skeleton.end(), 0.0f);
-  std::fill(data->impl.derived.begin(), data->impl.derived.end(), 0.0f);
+  const bool skip_derived = (flags & MHR_FORWARD_SKIP_DERIVED) != 0U;
 
-  std::copy(
-      data->impl.model_parameters.begin(),
-      data->impl.model_parameters.end(),
-      data->impl.parameter_inputs.begin());
-  std::copy(
-      data->impl.identity.begin(),
-      data->impl.identity.end(),
-      data->impl.parameter_inputs.begin() + model->impl.counts.model_parameter_count);
+  impl.timing = {};
 
-  bool used_exact_parameter_decode = false;
-#ifdef _WIN32
-  if (!model->impl.parameter_transform_dense.values.empty()) {
-    used_exact_parameter_decode = exact_sgemv(
-        static_cast<int>(model->impl.parameter_transform_dense.rows),
-        static_cast<int>(model->impl.parameter_transform_dense.columns),
-        model->impl.parameter_transform_dense.values.data(),
-        data->impl.parameter_inputs.data(),
-        data->impl.joint_parameters.data());
+  const bool cache_available = impl.cache_available;
+  const bool model_dirty = impl.model_parameters_dirty;
+  const bool identity_dirty = impl.identity_dirty;
+  const bool expression_dirty = impl.expression_dirty;
+
+  const bool parameter_decode_dirty = !cache_available || model_dirty || identity_dirty;
+  const bool joint_world_dirty = parameter_decode_dirty;
+  const bool surface_morph_dirty = !cache_available || identity_dirty || expression_dirty;
+  const bool pose_features_dirty = !cache_available || joint_world_dirty;
+  const bool corrective_stage1_dirty = !cache_available || pose_features_dirty;
+
+  std::vector<float> previous_hidden;
+  if (cache_available && corrective_stage1_dirty) {
+    previous_hidden = impl.hidden;
   }
+
+  std::vector<float> previous_pose_features;
+  if (cache_available && pose_features_dirty && compiled.pose_layout.pose_block_count > 0U) {
+    previous_pose_features = impl.pose_features;
+  }
+
+  if (parameter_decode_dirty) {
+    const auto stage_start = SteadyClock::now();
+    std::copy(
+        impl.model_parameters.begin(),
+        impl.model_parameters.end(),
+        impl.parameter_inputs.begin());
+    std::copy(
+        impl.identity.begin(),
+        impl.identity.end(),
+        impl.parameter_inputs.begin() + counts.model_parameter_count);
+
+    bool used_exact_parameter_decode = false;
+#ifdef _WIN32
+    if (!compiled.parameter_transform_dense.values.empty()) {
+      used_exact_parameter_decode = exact_sgemv(
+          static_cast<int>(compiled.parameter_transform_dense.rows),
+          static_cast<int>(compiled.parameter_transform_dense.columns),
+          compiled.parameter_transform_dense.values.data(),
+          impl.parameter_inputs.data(),
+          impl.joint_parameters.data());
+    }
 #endif
-  if (!used_exact_parameter_decode) {
-    for (uint32_t row = 0; row < model->impl.parameter_transform.summary.rows; ++row) {
-      double accum = 0.0;
-      const uint32_t start = model->impl.parameter_transform.row_ptr[row];
-      const uint32_t end = model->impl.parameter_transform.row_ptr[row + 1];
+    if (!used_exact_parameter_decode) {
+      for (uint32_t row = 0; row < compiled.parameter_transform.summary.rows; ++row) {
+        double accum = 0.0;
+        const uint32_t start = compiled.parameter_transform.row_ptr[row];
+        const uint32_t end = compiled.parameter_transform.row_ptr[row + 1];
+        for (uint32_t cursor = start; cursor < end; ++cursor) {
+          const uint32_t column = compiled.parameter_transform.col_index[cursor];
+          accum += static_cast<double>(compiled.parameter_transform.values[cursor]) *
+                   static_cast<double>(impl.parameter_inputs[column]);
+        }
+        impl.joint_parameters[row] = static_cast<float>(accum);
+      }
+    }
+    for (uint32_t row = 0; row < compiled.parameter_transform.summary.rows; ++row) {
+      impl.joint_parameters_fp64[row] = static_cast<double>(impl.joint_parameters[row]);
+    }
+    impl.timing.parameter_decode_ms = elapsed_ms(stage_start, SteadyClock::now());
+  }
+
+  if (joint_world_dirty) {
+    const auto stage_start = SteadyClock::now();
+    for (uint32_t joint_index = 0; joint_index < counts.joint_count; ++joint_index) {
+      const float* joint_values = impl.joint_parameters.data() + static_cast<size_t>(joint_index) * 7U;
+      const float* rig_translation = compiled.rig_translation_offsets + static_cast<size_t>(joint_index) * 3U;
+      const float* rig_prerotation = compiled.rig_prerotations + static_cast<size_t>(joint_index) * 4U;
+      const Quatf local_rotation = quat_multiply_assume_normalizedf(
+          Quatf{rig_prerotation[0], rig_prerotation[1], rig_prerotation[2], rig_prerotation[3]},
+          euler_xyz_quatf(joint_values[3], joint_values[4], joint_values[5]));
+      Transform local_transform;
+      local_transform.translation = Vec3{
+          rig_translation[0] + joint_values[0],
+          rig_translation[1] + joint_values[1],
+          rig_translation[2] + joint_values[2],
+      };
+      local_transform.rotation = Quat{
+          static_cast<double>(local_rotation.x),
+          static_cast<double>(local_rotation.y),
+          static_cast<double>(local_rotation.z),
+          static_cast<double>(local_rotation.w),
+      };
+      local_transform.scale = std::exp2(joint_values[6]);
+      write_transform_tuple(
+          local_transform,
+          impl.local_transforms.data() + static_cast<size_t>(joint_index) * 8U);
+      impl.world_transforms_fp64[static_cast<size_t>(joint_index)] = local_transform;
+    }
+
+    for (uint32_t level = 0; level < compiled.prefix_mul_level_count; ++level) {
+      const uint32_t start = compiled.prefix_mul_level_offsets[level];
+      const uint32_t end = compiled.prefix_mul_level_offsets[level + 1U];
       for (uint32_t cursor = start; cursor < end; ++cursor) {
-        const uint32_t column = model->impl.parameter_transform.col_index[cursor];
-        accum += static_cast<double>(model->impl.parameter_transform.values[cursor]) *
-                 static_cast<double>(data->impl.parameter_inputs[column]);
+        const uint32_t source = compiled.prefix_mul_source[cursor];
+        const uint32_t target = compiled.prefix_mul_target[cursor];
+        impl.world_transforms_fp64[static_cast<size_t>(source)] = multiply_skel_state(
+            impl.world_transforms_fp64[static_cast<size_t>(target)],
+            impl.world_transforms_fp64[static_cast<size_t>(source)]);
       }
-      data->impl.joint_parameters[row] = static_cast<float>(accum);
     }
-  }
-  for (uint32_t row = 0; row < model->impl.parameter_transform.summary.rows; ++row) {
-    data->impl.joint_parameters_fp64[row] = static_cast<double>(data->impl.joint_parameters[row]);
-  }
 
-  for (uint32_t joint_index = 0; joint_index < model->impl.counts.joint_count; ++joint_index) {
-    const float* joint_values = data->impl.joint_parameters.data() + static_cast<size_t>(joint_index) * 7U;
-    const float* rig_translation = model->impl.rig_translation_offsets + static_cast<size_t>(joint_index) * 3U;
-    const float* rig_prerotation = model->impl.rig_prerotations + static_cast<size_t>(joint_index) * 4U;
-    const Quatf local_rotation = quat_multiply_assume_normalizedf(
-        Quatf{rig_prerotation[0], rig_prerotation[1], rig_prerotation[2], rig_prerotation[3]},
-        euler_xyz_quatf(joint_values[3], joint_values[4], joint_values[5]));
-    Transform local_transform;
-    const float local_tx = rig_translation[0] + joint_values[0];
-    const float local_ty = rig_translation[1] + joint_values[1];
-    const float local_tz = rig_translation[2] + joint_values[2];
-    local_transform.translation = Vec3{
-        local_tx,
-        local_ty,
-        local_tz,
-    };
-    local_transform.rotation = Quat{
-        static_cast<double>(local_rotation.x),
-        static_cast<double>(local_rotation.y),
-        static_cast<double>(local_rotation.z),
-        static_cast<double>(local_rotation.w),
-    };
-    local_transform.scale = std::exp2(joint_values[6]);
-    write_transform_tuple(local_transform, data->impl.local_transforms.data() + static_cast<size_t>(joint_index) * 8U);
-    data->impl.world_transforms_fp64[static_cast<size_t>(joint_index)] = local_transform;
-  }
-
-  for (uint32_t level = 0; level < model->impl.prefix_mul_level_count; ++level) {
-    const uint32_t start = model->impl.prefix_mul_level_offsets[level];
-    const uint32_t end = model->impl.prefix_mul_level_offsets[level + 1U];
-    for (uint32_t cursor = start; cursor < end; ++cursor) {
-      const uint32_t source = model->impl.prefix_mul_source[cursor];
-      const uint32_t target = model->impl.prefix_mul_target[cursor];
-      data->impl.world_transforms_fp64[static_cast<size_t>(source)] = multiply_skel_state(
-          data->impl.world_transforms_fp64[static_cast<size_t>(target)],
-          data->impl.world_transforms_fp64[static_cast<size_t>(source)]);
+    for (uint32_t joint_index = 0; joint_index < counts.joint_count; ++joint_index) {
+      const Transform& world_transform = impl.world_transforms_fp64[static_cast<size_t>(joint_index)];
+      write_transform_tuple(
+          world_transform,
+          impl.global_transforms.data() + static_cast<size_t>(joint_index) * 8U);
+      write_transform_tuple(
+          world_transform,
+          impl.skeleton.data() + static_cast<size_t>(joint_index) * 8U);
     }
+    impl.timing.joint_world_transforms_ms = elapsed_ms(stage_start, SteadyClock::now());
   }
 
-  for (uint32_t joint_index = 0; joint_index < model->impl.counts.joint_count; ++joint_index) {
-    const Transform& world_transform = data->impl.world_transforms_fp64[static_cast<size_t>(joint_index)];
-    write_transform_tuple(world_transform, data->impl.global_transforms.data() + static_cast<size_t>(joint_index) * 8U);
-    write_transform_tuple(world_transform, data->impl.skeleton.data() + static_cast<size_t>(joint_index) * 8U);
+  const size_t vertex_value_count = static_cast<size_t>(counts.vertex_count) * 3U;
+  if (surface_morph_dirty) {
+    const auto stage_start = SteadyClock::now();
+    std::copy(
+        compiled.base_mesh,
+        compiled.base_mesh + vertex_value_count,
+        impl.rest_vertices_pre_corrective.begin());
+    const std::vector<ActiveBasisTerm> active_identity = build_active_basis_terms(
+        compiled.identity_basis,
+        impl.identity,
+        vertex_value_count);
+    const std::vector<ActiveBasisTerm> active_expression = build_active_basis_terms(
+        compiled.expression_basis,
+        impl.expression,
+        vertex_value_count);
+    accumulate_active_basis_terms(&impl.rest_vertices_pre_corrective, active_identity);
+    accumulate_active_basis_terms(&impl.rest_vertices_pre_corrective, active_expression);
+    impl.timing.surface_morph_ms = elapsed_ms(stage_start, SteadyClock::now());
   }
 
-  const size_t vertex_value_count = static_cast<size_t>(model->impl.counts.vertex_count) * 3U;
-  std::copy(
-      model->impl.base_mesh,
-      model->impl.base_mesh + vertex_value_count,
-      data->impl.rest_vertices.begin());
-
-  for (size_t offset = 0; offset < vertex_value_count; ++offset) {
-    float surface_delta = 0.0f;
-    for (uint32_t identity_index = 0; identity_index < model->impl.counts.identity_count; ++identity_index) {
-      const float coefficient = data->impl.identity[identity_index];
-      if (coefficient == 0.0f) {
-        continue;
-      }
-      const float* basis = model->impl.identity_basis + static_cast<size_t>(identity_index) * vertex_value_count;
-      surface_delta += basis[offset] * coefficient;
-    }
-    for (uint32_t expression_index = 0; expression_index < model->impl.counts.expression_count; ++expression_index) {
-      const float coefficient = data->impl.expression[expression_index];
-      if (coefficient == 0.0f) {
-        continue;
-      }
-      const float* basis =
-          model->impl.expression_basis + static_cast<size_t>(expression_index) * vertex_value_count;
-      surface_delta += basis[offset] * coefficient;
-    }
-    data->impl.rest_vertices[offset] += surface_delta;
-  }
-  std::copy(
-      data->impl.rest_vertices.begin(),
-      data->impl.rest_vertices.end(),
-      data->impl.rest_vertices_pre_corrective.begin());
-
-  const uint32_t pose_joint_count =
-      std::min(model->impl.counts.pose_feature_count / 6U,
-               model->impl.counts.joint_count > 2U ? model->impl.counts.joint_count - 2U : 0U);
-  for (uint32_t joint_offset = 0; joint_offset < pose_joint_count; ++joint_offset) {
-    const uint32_t joint_index = joint_offset + 2U;
-    const float* joint_values = data->impl.joint_parameters.data() + static_cast<size_t>(joint_index) * 7U;
-    const float rx = joint_values[3];
-    const float ry = joint_values[4];
-    const float rz = joint_values[5];
-    float sx;
-    float sy;
-    float sz;
-    float cx;
-    float cy;
-    float cz;
+  if (pose_features_dirty) {
+    const auto stage_start = SteadyClock::now();
+    const uint32_t pose_joint_count =
+        std::min(counts.pose_feature_count / 6U,
+                 counts.joint_count > 2U ? counts.joint_count - 2U : 0U);
+    for (uint32_t joint_offset = 0; joint_offset < pose_joint_count; ++joint_offset) {
+      const uint32_t joint_index = joint_offset + 2U;
+      const float* joint_values = impl.joint_parameters.data() + static_cast<size_t>(joint_index) * 7U;
+      const float rx = joint_values[3];
+      const float ry = joint_values[4];
+      const float rz = joint_values[5];
+      float sx;
+      float sy;
+      float sz;
+      float cx;
+      float cy;
+      float cz;
 #ifdef _WIN32
-    float sin_values[3];
-    float cos_values[3];
-    if (exact_sincos3(rx, ry, rz, sin_values, cos_values)) {
-      sx = sin_values[0];
-      sy = sin_values[1];
-      sz = sin_values[2];
-      cx = cos_values[0];
-      cy = cos_values[1];
-      cz = cos_values[2];
-    } else
+      float sin_values[3];
+      float cos_values[3];
+      if (exact_sincos3(rx, ry, rz, sin_values, cos_values)) {
+        sx = sin_values[0];
+        sy = sin_values[1];
+        sz = sin_values[2];
+        cx = cos_values[0];
+        cy = cos_values[1];
+        cz = cos_values[2];
+      } else
 #endif
-    {
-      cx = std::cos(rx);
-      cy = std::cos(ry);
-      cz = std::cos(rz);
-      sx = std::sin(rx);
-      sy = std::sin(ry);
-      sz = std::sin(rz);
+      {
+        cx = std::cos(rx);
+        cy = std::cos(ry);
+        cz = std::cos(rz);
+        sx = std::sin(rx);
+        sy = std::sin(ry);
+        sz = std::sin(rz);
+      }
+      const size_t offset = static_cast<size_t>(joint_offset) * 6U;
+      impl.pose_features[offset + 0] = cy * cz - 1.0f;
+      impl.pose_features[offset + 1] = cy * sz;
+      impl.pose_features[offset + 2] = -sy;
+      impl.pose_features[offset + 3] = -cx * sz + sx * sy * cz;
+      impl.pose_features[offset + 4] = cx * cz + sx * sy * sz - 1.0f;
+      impl.pose_features[offset + 5] = sx * cy;
     }
-    const size_t offset = static_cast<size_t>(joint_offset) * 6U;
-    data->impl.pose_features[offset + 0] = cy * cz - 1.0f;
-    data->impl.pose_features[offset + 1] = cy * sz;
-    data->impl.pose_features[offset + 2] = -sy;
-    data->impl.pose_features[offset + 3] = -cx * sz + sx * sy * cz;
-    data->impl.pose_features[offset + 4] = cx * cz + sx * sy * sz - 1.0f;
-    data->impl.pose_features[offset + 5] = sx * cy;
+    impl.timing.pose_features_ms = elapsed_ms(stage_start, SteadyClock::now());
   }
 
-  bool used_exact_stage1 = false;
+  bool corrective_stage2_dirty = !cache_available || corrective_stage1_dirty;
+  bool corrective_delta_changed = false;
+  std::vector<uint32_t> dirty_pose_blocks;
+
+  if (corrective_stage1_dirty) {
+    const auto stage_start = SteadyClock::now();
+    const uint32_t block_count = compiled.pose_layout.pose_block_count;
+    bool run_full_stage1 = !cache_available || block_count == 0U || previous_pose_features.empty();
+    if (!run_full_stage1) {
+      dirty_pose_blocks.reserve(block_count);
+      for (uint32_t block_index = 0; block_index < block_count; ++block_index) {
+        const uint32_t feature_start = compiled.pose_block_feature_offsets[block_index];
+        const uint32_t feature_end = compiled.pose_block_feature_offsets[block_index + 1U];
+        const float* previous_begin =
+            previous_pose_features.data() + static_cast<size_t>(feature_start);
+        const float* previous_end =
+            previous_pose_features.data() + static_cast<size_t>(feature_end);
+        const float* current_begin =
+            impl.pose_features.data() + static_cast<size_t>(feature_start);
+        if (!std::equal(previous_begin, previous_end, current_begin)) {
+          dirty_pose_blocks.push_back(block_index);
+        }
+      }
+      run_full_stage1 = dirty_pose_blocks.size() == block_count;
+    } else {
+      dirty_pose_blocks.assign(block_count, 0U);
+      for (uint32_t block_index = 0; block_index < block_count; ++block_index) {
+        dirty_pose_blocks[block_index] = block_index;
+      }
+    }
+
+    if (run_full_stage1) {
+      bool used_exact_stage1 = false;
 #ifdef _WIN32
-  if (!model->impl.pose_corrective_stage1_dense.values.empty()) {
-    used_exact_stage1 = exact_sgemv(
-        static_cast<int>(model->impl.pose_corrective_stage1_dense.rows),
-        static_cast<int>(model->impl.pose_corrective_stage1_dense.columns),
-        model->impl.pose_corrective_stage1_dense.values.data(),
-        data->impl.pose_features.data(),
-        data->impl.hidden.data());
-  }
-#endif
-  if (!used_exact_stage1) {
-    for (uint32_t row = 0; row < model->impl.pose_corrective_stage1.summary.rows; ++row) {
-      float accum = 0.0f;
-      const uint32_t start = model->impl.pose_corrective_stage1.row_ptr[row];
-      const uint32_t end = model->impl.pose_corrective_stage1.row_ptr[row + 1];
-      for (uint32_t cursor = start; cursor < end; ++cursor) {
-        const uint32_t feature_index = model->impl.pose_corrective_stage1.col_index[cursor];
-        accum += model->impl.pose_corrective_stage1.values[cursor] * data->impl.pose_features[feature_index];
+      if (!compiled.pose_corrective_stage1_dense.values.empty()) {
+        used_exact_stage1 = exact_sgemv(
+            static_cast<int>(compiled.pose_corrective_stage1_dense.rows),
+            static_cast<int>(compiled.pose_corrective_stage1_dense.columns),
+            compiled.pose_corrective_stage1_dense.values.data(),
+            impl.pose_features.data(),
+            impl.hidden.data());
       }
-      data->impl.hidden[row] = accum;
+#endif
+      if (!used_exact_stage1) {
+        for (uint32_t row = 0; row < compiled.pose_corrective_stage1.summary.rows; ++row) {
+          float accum = 0.0f;
+          const uint32_t start = compiled.pose_corrective_stage1.row_ptr[row];
+          const uint32_t end = compiled.pose_corrective_stage1.row_ptr[row + 1];
+          for (uint32_t cursor = start; cursor < end; ++cursor) {
+            const uint32_t feature_index = compiled.pose_corrective_stage1.col_index[cursor];
+            accum +=
+                compiled.pose_corrective_stage1.values[cursor] * impl.pose_features[feature_index];
+          }
+          impl.hidden[row] = std::max(accum, 0.0f);
+        }
+      } else {
+        for (float& value : impl.hidden) {
+          value = std::max(value, 0.0f);
+        }
+      }
+    } else if (!dirty_pose_blocks.empty()) {
+      for (const uint32_t block_index : dirty_pose_blocks) {
+        const uint32_t row_start = compiled.pose_block_hidden_offsets[block_index];
+        const uint32_t row_end = compiled.pose_block_hidden_offsets[block_index + 1U];
+        for (uint32_t row = row_start; row < row_end; ++row) {
+          float accum = 0.0f;
+          const uint32_t start = compiled.pose_corrective_stage1.row_ptr[row];
+          const uint32_t end = compiled.pose_corrective_stage1.row_ptr[row + 1];
+          for (uint32_t cursor = start; cursor < end; ++cursor) {
+            const uint32_t feature_index = compiled.pose_corrective_stage1.col_index[cursor];
+            accum +=
+                compiled.pose_corrective_stage1.values[cursor] * impl.pose_features[feature_index];
+          }
+          impl.hidden[row] = std::max(accum, 0.0f);
+        }
+      }
+    } else {
+      corrective_stage2_dirty = false;
     }
-  }
-  for (float& value : data->impl.hidden) {
-    value = std::max(value, 0.0f);
+
+    impl.timing.corrective_stage1_ms = elapsed_ms(stage_start, SteadyClock::now());
   }
 
-  bool used_exact_stage2 = false;
+  std::vector<uint32_t> touched_corrective_rows;
+  if (corrective_stage2_dirty) {
+    const auto stage_start = SteadyClock::now();
+    bool run_full_stage2 = !cache_available || previous_hidden.empty();
+    if (run_full_stage2) {
+      corrective_delta_changed = true;
+      bool used_exact_stage2 = false;
 #ifdef _WIN32
-  if (model->impl.pose_corrective_stage2_dense != nullptr) {
-    used_exact_stage2 = exact_sgemv(
-        static_cast<int>(model->impl.counts.vertex_count * 3U),
-        static_cast<int>(model->impl.counts.hidden_count),
-        model->impl.pose_corrective_stage2_dense,
-        data->impl.hidden.data(),
-        data->impl.corrective_delta.data());
-  }
+      if (compiled.pose_corrective_stage2_dense != nullptr) {
+        used_exact_stage2 = exact_sgemv(
+            static_cast<int>(counts.vertex_count * 3U),
+            static_cast<int>(counts.hidden_count),
+            compiled.pose_corrective_stage2_dense,
+            impl.hidden.data(),
+            impl.corrective_delta.data());
+      }
 #endif
-  if (!used_exact_stage2) {
-    for (uint32_t hidden_index = 0; hidden_index < model->impl.pose_corrective_stage2.summary.columns; ++hidden_index) {
-      const float hidden_value = data->impl.hidden[hidden_index];
-      if (hidden_value == 0.0f) {
-        continue;
+      if (!used_exact_stage2) {
+        std::fill(impl.corrective_delta.begin(), impl.corrective_delta.end(), 0.0f);
+        for (uint32_t hidden_index = 0; hidden_index < compiled.pose_corrective_stage2.summary.columns;
+             ++hidden_index) {
+          const float hidden_value = impl.hidden[hidden_index];
+          if (hidden_value == 0.0f) {
+            continue;
+          }
+          const uint32_t start = compiled.pose_corrective_stage2.col_ptr[hidden_index];
+          const uint32_t end = compiled.pose_corrective_stage2.col_ptr[hidden_index + 1];
+          for (uint32_t cursor = start; cursor < end; ++cursor) {
+            impl.corrective_delta[compiled.pose_corrective_stage2.row_index[cursor]] +=
+                compiled.pose_corrective_stage2.values[cursor] * hidden_value;
+          }
+        }
       }
-      const uint32_t start = model->impl.pose_corrective_stage2.col_ptr[hidden_index];
-      const uint32_t end = model->impl.pose_corrective_stage2.col_ptr[hidden_index + 1];
-      for (uint32_t cursor = start; cursor < end; ++cursor) {
-        data->impl.corrective_delta[model->impl.pose_corrective_stage2.row_index[cursor]] +=
-            model->impl.pose_corrective_stage2.values[cursor] * hidden_value;
+    } else {
+      std::vector<uint32_t> dirty_hidden_indices;
+      dirty_hidden_indices.reserve(counts.hidden_count);
+      for (uint32_t hidden_index = 0; hidden_index < counts.hidden_count; ++hidden_index) {
+        if (previous_hidden[hidden_index] != impl.hidden[hidden_index]) {
+          dirty_hidden_indices.push_back(hidden_index);
+        }
+      }
+
+      if (!dirty_hidden_indices.empty()) {
+        run_full_stage2 =
+            dirty_hidden_indices.size() > std::max<uint32_t>(1U, counts.hidden_count / 3U);
+        if (run_full_stage2) {
+          corrective_delta_changed = true;
+          bool used_exact_stage2 = false;
+#ifdef _WIN32
+          if (compiled.pose_corrective_stage2_dense != nullptr) {
+            used_exact_stage2 = exact_sgemv(
+                static_cast<int>(counts.vertex_count * 3U),
+                static_cast<int>(counts.hidden_count),
+                compiled.pose_corrective_stage2_dense,
+                impl.hidden.data(),
+                impl.corrective_delta.data());
+          }
+#endif
+          if (!used_exact_stage2) {
+            std::fill(impl.corrective_delta.begin(), impl.corrective_delta.end(), 0.0f);
+            for (uint32_t hidden_index = 0;
+                 hidden_index < compiled.pose_corrective_stage2.summary.columns;
+                 ++hidden_index) {
+              const float hidden_value = impl.hidden[hidden_index];
+              if (hidden_value == 0.0f) {
+                continue;
+              }
+              const uint32_t start = compiled.pose_corrective_stage2.col_ptr[hidden_index];
+              const uint32_t end = compiled.pose_corrective_stage2.col_ptr[hidden_index + 1];
+              for (uint32_t cursor = start; cursor < end; ++cursor) {
+                impl.corrective_delta[compiled.pose_corrective_stage2.row_index[cursor]] +=
+                    compiled.pose_corrective_stage2.values[cursor] * hidden_value;
+              }
+            }
+          }
+        } else {
+          corrective_delta_changed = true;
+          std::vector<uint8_t> touched_row_flags(vertex_value_count, 0U);
+          for (const uint32_t hidden_index : dirty_hidden_indices) {
+            const float delta = impl.hidden[hidden_index] - previous_hidden[hidden_index];
+            const uint32_t start = compiled.pose_corrective_stage2.col_ptr[hidden_index];
+            const uint32_t end = compiled.pose_corrective_stage2.col_ptr[hidden_index + 1];
+            for (uint32_t cursor = start; cursor < end; ++cursor) {
+              impl.corrective_delta[compiled.pose_corrective_stage2.row_index[cursor]] +=
+                  compiled.pose_corrective_stage2.values[cursor] * delta;
+            }
+            if (compiled.pose_layout.pose_block_count > 0U) {
+              const uint32_t block_index = find_pose_block_for_hidden_index(
+                  compiled.pose_block_hidden_offsets,
+                  compiled.pose_layout.pose_block_count,
+                  hidden_index);
+              const uint32_t row_start = compiled.corrective_block_row_offsets[block_index];
+              const uint32_t row_end = compiled.corrective_block_row_offsets[block_index + 1U];
+              for (uint32_t row_cursor = row_start; row_cursor < row_end; ++row_cursor) {
+                const uint32_t output_row = compiled.corrective_block_row_index[row_cursor];
+                if (touched_row_flags[output_row] == 0U) {
+                  touched_row_flags[output_row] = 1U;
+                  touched_corrective_rows.push_back(output_row);
+                }
+              }
+            }
+          }
+        }
       }
     }
-  }
-  for (size_t offset = 0; offset < vertex_value_count; ++offset) {
-    data->impl.rest_vertices[offset] += data->impl.corrective_delta[offset];
+
+    impl.timing.corrective_stage2_ms = elapsed_ms(stage_start, SteadyClock::now());
   }
 
-  for (uint32_t joint_index = 0; joint_index < model->impl.counts.joint_count; ++joint_index) {
-    const float* global_state = data->impl.global_transforms.data() + static_cast<size_t>(joint_index) * 8U;
-    const float* inverse_bind_state = model->impl.inverse_bind_pose + static_cast<size_t>(joint_index) * 8U;
-    const Quatf parent_rotation = normalize_quatf(
-        Quatf{global_state[3], global_state[4], global_state[5], global_state[6]});
-    const Quatf local_rotation = normalize_quatf(
-        Quatf{inverse_bind_state[3], inverse_bind_state[4], inverse_bind_state[5], inverse_bind_state[6]});
-    const Vec3f rotated = rotate_vec_assume_normalizedf(
-        parent_rotation,
-        Vec3f{inverse_bind_state[0], inverse_bind_state[1], inverse_bind_state[2]});
-    const size_t skin_offset = static_cast<size_t>(joint_index) * 8U;
-    data->impl.skin_transforms[skin_offset + 0] = global_state[0] + global_state[7] * rotated.x;
-    data->impl.skin_transforms[skin_offset + 1] = global_state[1] + global_state[7] * rotated.y;
-    data->impl.skin_transforms[skin_offset + 2] = global_state[2] + global_state[7] * rotated.z;
-    const Quatf joint_rotation = quat_multiply_assume_normalizedf(parent_rotation, local_rotation);
-    data->impl.skin_transforms[skin_offset + 3] = joint_rotation.x;
-    data->impl.skin_transforms[skin_offset + 4] = joint_rotation.y;
-    data->impl.skin_transforms[skin_offset + 5] = joint_rotation.z;
-    data->impl.skin_transforms[skin_offset + 6] = joint_rotation.w;
-    data->impl.skin_transforms[skin_offset + 7] = global_state[7] * inverse_bind_state[7];
+  bool rest_vertices_dirty = !cache_available;
+  if (surface_morph_dirty) {
+    compose_rest_vertices(
+        impl.rest_vertices_pre_corrective,
+        impl.corrective_delta,
+        &impl.rest_vertices);
+    rest_vertices_dirty = true;
+  } else if (corrective_delta_changed) {
+    if (touched_corrective_rows.empty()) {
+      compose_rest_vertices(
+          impl.rest_vertices_pre_corrective,
+          impl.corrective_delta,
+          &impl.rest_vertices);
+    } else {
+      compose_rest_vertices_rows(
+          impl.rest_vertices_pre_corrective,
+          impl.corrective_delta,
+          touched_corrective_rows,
+          &impl.rest_vertices);
+    }
+    rest_vertices_dirty = true;
   }
 
-  for (uint32_t vertex_index = 0; vertex_index < model->impl.counts.vertex_count; ++vertex_index) {
-    const size_t base_offset = static_cast<size_t>(vertex_index) * 3U;
-    const Vec3f rest_point{
-        data->impl.rest_vertices[base_offset + 0],
-        data->impl.rest_vertices[base_offset + 1],
-        data->impl.rest_vertices[base_offset + 2],
-    };
-    Vec3f skinned{};
-    for (uint32_t influence_index = 0; influence_index < model->impl.counts.max_influence_count; ++influence_index) {
-      const size_t influence_offset =
-          static_cast<size_t>(vertex_index) * model->impl.counts.max_influence_count + influence_index;
-      const float weight = model->impl.skinning_weights[influence_offset];
-      if (weight == 0.0f) {
-        continue;
+  const bool skinning_dirty = !cache_available || joint_world_dirty || rest_vertices_dirty;
+  if (skinning_dirty) {
+    const auto stage_start = SteadyClock::now();
+    if (joint_world_dirty || !cache_available) {
+      for (uint32_t joint_index = 0; joint_index < counts.joint_count; ++joint_index) {
+        const float* global_state = impl.global_transforms.data() + static_cast<size_t>(joint_index) * 8U;
+        const float* inverse_bind_state = compiled.inverse_bind_pose + static_cast<size_t>(joint_index) * 8U;
+        const Quatf parent_rotation = normalize_quatf(
+            Quatf{global_state[3], global_state[4], global_state[5], global_state[6]});
+        const Quatf local_rotation = normalize_quatf(
+            Quatf{
+                inverse_bind_state[3],
+                inverse_bind_state[4],
+                inverse_bind_state[5],
+                inverse_bind_state[6]});
+        const Vec3f rotated = rotate_vec_assume_normalizedf(
+            parent_rotation,
+            Vec3f{inverse_bind_state[0], inverse_bind_state[1], inverse_bind_state[2]});
+        const size_t skin_offset = static_cast<size_t>(joint_index) * 8U;
+        impl.skin_transforms[skin_offset + 0] = global_state[0] + global_state[7] * rotated.x;
+        impl.skin_transforms[skin_offset + 1] = global_state[1] + global_state[7] * rotated.y;
+        impl.skin_transforms[skin_offset + 2] = global_state[2] + global_state[7] * rotated.z;
+        const Quatf joint_rotation = quat_multiply_assume_normalizedf(parent_rotation, local_rotation);
+        impl.skin_transforms[skin_offset + 3] = joint_rotation.x;
+        impl.skin_transforms[skin_offset + 4] = joint_rotation.y;
+        impl.skin_transforms[skin_offset + 5] = joint_rotation.z;
+        impl.skin_transforms[skin_offset + 6] = joint_rotation.w;
+        impl.skin_transforms[skin_offset + 7] = global_state[7] * inverse_bind_state[7];
       }
-      const uint32_t joint_index = model->impl.skinning_indices[influence_offset];
-      const float* skin_joint_state =
-          data->impl.skin_transforms.data() + static_cast<size_t>(joint_index) * 8U;
-      const Vec3f transformed = apply_point_transformf(
-          tuple_transformf(skin_joint_state),
-          rest_point);
-      skinned.x += transformed.x * weight;
-      skinned.y += transformed.y * weight;
-      skinned.z += transformed.z * weight;
     }
-    data->impl.output_vertices[base_offset + 0] = skinned.x;
-    data->impl.output_vertices[base_offset + 1] = skinned.y;
-    data->impl.output_vertices[base_offset + 2] = skinned.z;
+
+    for (uint32_t vertex_index = 0; vertex_index < counts.vertex_count; ++vertex_index) {
+      const size_t base_offset = static_cast<size_t>(vertex_index) * 3U;
+      const Vec3f rest_point{
+          impl.rest_vertices[base_offset + 0],
+          impl.rest_vertices[base_offset + 1],
+          impl.rest_vertices[base_offset + 2],
+      };
+      Vec3f skinned{};
+      for (uint32_t influence_index = 0; influence_index < counts.max_influence_count;
+           ++influence_index) {
+        const size_t influence_offset =
+            static_cast<size_t>(vertex_index) * counts.max_influence_count + influence_index;
+        const float weight = compiled.skinning_weights[influence_offset];
+        if (weight == 0.0f) {
+          continue;
+        }
+        const uint32_t joint_index = compiled.skinning_indices[influence_offset];
+        const float* skin_joint_state =
+            impl.skin_transforms.data() + static_cast<size_t>(joint_index) * 8U;
+        const Vec3f transformed = apply_point_transformf(
+            tuple_transformf(skin_joint_state),
+            rest_point);
+        skinned.x += transformed.x * weight;
+        skinned.y += transformed.y * weight;
+        skinned.z += transformed.z * weight;
+      }
+      impl.output_vertices[base_offset + 0] = skinned.x;
+      impl.output_vertices[base_offset + 1] = skinned.y;
+      impl.output_vertices[base_offset + 2] = skinned.z;
+    }
+    impl.timing.skinning_ms = elapsed_ms(stage_start, SteadyClock::now());
   }
 
-  if ((flags & MHR_FORWARD_SKIP_DERIVED) == 0U) {
-    float min_skeleton_y = std::numeric_limits<float>::infinity();
-    float max_skeleton_y = -std::numeric_limits<float>::infinity();
-    for (uint32_t joint_index = 0; joint_index < model->impl.counts.joint_count; ++joint_index) {
-      const float joint_y = data->impl.skeleton[static_cast<size_t>(joint_index) * 8U + 1U];
-      min_skeleton_y = std::min(min_skeleton_y, joint_y);
-      max_skeleton_y = std::max(max_skeleton_y, joint_y);
+  if (skip_derived) {
+    impl.derived_valid = false;
+  } else {
+    const bool derived_dirty =
+        !cache_available || !impl.derived_valid || joint_world_dirty || skinning_dirty;
+    if (derived_dirty) {
+      const auto stage_start = SteadyClock::now();
+      float min_skeleton_y = std::numeric_limits<float>::infinity();
+      float max_skeleton_y = -std::numeric_limits<float>::infinity();
+      for (uint32_t joint_index = 0; joint_index < counts.joint_count; ++joint_index) {
+        const float joint_y = impl.skeleton[static_cast<size_t>(joint_index) * 8U + 1U];
+        min_skeleton_y = std::min(min_skeleton_y, joint_y);
+        max_skeleton_y = std::max(max_skeleton_y, joint_y);
+      }
+      const size_t root_joint_offset =
+          static_cast<size_t>(counts.joint_count > 1U ? 1U : 0U) * 8U;
+      impl.derived[0] = impl.skeleton[root_joint_offset + 0U];
+      impl.derived[1] = impl.skeleton[root_joint_offset + 1U];
+      impl.derived[2] = impl.skeleton[root_joint_offset + 2U];
+      impl.derived[3] = impl.output_vertices[0];
+      impl.derived[4] = impl.output_vertices[1];
+      impl.derived[5] = impl.output_vertices[2];
+      impl.derived[6] = max_skeleton_y - min_skeleton_y;
+      impl.derived_valid = true;
+      impl.timing.derived_stage_ms = elapsed_ms(stage_start, SteadyClock::now());
     }
-    const size_t root_joint_offset =
-        static_cast<size_t>(model->impl.counts.joint_count > 1U ? 1U : 0U) * 8U;
-    data->impl.derived[0] = data->impl.skeleton[root_joint_offset + 0U];
-    data->impl.derived[1] = data->impl.skeleton[root_joint_offset + 1U];
-    data->impl.derived[2] = data->impl.skeleton[root_joint_offset + 2U];
-    data->impl.derived[3] = data->impl.output_vertices[0];
-    data->impl.derived[4] = data->impl.output_vertices[1];
-    data->impl.derived[5] = data->impl.output_vertices[2];
-    data->impl.derived[6] = max_skeleton_y - min_skeleton_y;
   }
 
-  data->impl.evaluated = true;
-  data->impl.last_error.clear();
-  data->impl.timing.evaluate_core_ms = elapsed_ms(evaluate_start, SteadyClock::now());
+  impl.cache_available = true;
+  impl.evaluated = true;
+  impl.model_parameters_dirty = false;
+  impl.identity_dirty = false;
+  impl.expression_dirty = false;
+  impl.last_error.clear();
+  impl.timing.evaluate_core_ms = elapsed_ms(evaluate_start, SteadyClock::now());
   return 1;
 }
 
@@ -1775,7 +2111,8 @@ int mhr_get_derived(
     const MhrData* data,
     float* out_values,
     uint32_t count) {
-  if (model == nullptr || data == nullptr || out_values == nullptr || !data->impl.evaluated) {
+  if (model == nullptr || data == nullptr || out_values == nullptr ||
+      !data->impl.evaluated || !data->impl.derived_valid) {
     return 0;
   }
   if (count != data->impl.derived.size()) {

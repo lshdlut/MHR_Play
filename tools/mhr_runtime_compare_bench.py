@@ -78,6 +78,14 @@ class MhrRuntimeDebugTiming(ctypes.Structure):
         ("vertices_export_ms", ctypes.c_float),
         ("skeleton_export_ms", ctypes.c_float),
         ("derived_export_ms", ctypes.c_float),
+        ("parameter_decode_ms", ctypes.c_float),
+        ("joint_world_transforms_ms", ctypes.c_float),
+        ("surface_morph_ms", ctypes.c_float),
+        ("pose_features_ms", ctypes.c_float),
+        ("corrective_stage1_ms", ctypes.c_float),
+        ("corrective_stage2_ms", ctypes.c_float),
+        ("skinning_ms", ctypes.c_float),
+        ("derived_stage_ms", ctypes.c_float),
     ]
 
 
@@ -126,6 +134,27 @@ def summarize(values: list[float]) -> dict[str, float]:
         "p95": percentile(ordered, 0.95),
         "max": float(max(ordered)) if ordered else 0.0,
     }
+
+
+def timing_stage_fields() -> tuple[str, ...]:
+    return (
+        "parameter_decode_ms",
+        "joint_world_transforms_ms",
+        "surface_morph_ms",
+        "pose_features_ms",
+        "corrective_stage1_ms",
+        "corrective_stage2_ms",
+        "skinning_ms",
+        "derived_stage_ms",
+    )
+
+
+def summarize_stage_timings(samples: list[MhrRuntimeDebugTiming]) -> dict[str, dict[str, float]]:
+    summary: dict[str, dict[str, float]] = {}
+    for field_name in timing_stage_fields():
+        values = [float(getattr(sample, field_name)) for sample in samples]
+        summary[field_name] = summarize(values)
+    return summary
 
 
 def configure_library(repo_root: Path, build_dir: Path, config: str) -> Path:
@@ -314,7 +343,7 @@ def run_legacy_bench(lib: ctypes.CDLL, manifest_dir: Path, warmup: int, iteratio
 
         evaluate_wall: list[float] = []
         full_to_verts_wall: list[float] = []
-        core: list[float] = []
+        timing_samples: list[MhrRuntimeDebugTiming] = []
         for _ in range(iterations):
             full_start = time.perf_counter()
             check_ok(lib.mhr_runtime_reset_state(runtime), "mhr_runtime_reset_state", lib.mhr_runtime_last_error(runtime))
@@ -348,7 +377,7 @@ def run_legacy_bench(lib: ctypes.CDLL, manifest_dir: Path, warmup: int, iteratio
                 "mhr_runtime_get_debug_timing",
                 lib.mhr_runtime_last_error(runtime),
             )
-            core.append(float(timing.evaluate_core_ms))
+            timing_samples.append(timing)
 
         return {
             "counts": {
@@ -360,7 +389,8 @@ def run_legacy_bench(lib: ctypes.CDLL, manifest_dir: Path, warmup: int, iteratio
             },
             "evaluateWallMs": summarize(evaluate_wall),
             "fullToVertsWallMs": summarize(full_to_verts_wall),
-            "evaluateCoreMs": summarize(core),
+            "evaluateCoreMs": summarize([float(sample.evaluate_core_ms) for sample in timing_samples]),
+            "stageTimingsMs": summarize_stage_timings(timing_samples),
         }
     finally:
         lib.mhr_runtime_destroy(runtime)
@@ -413,7 +443,7 @@ def run_ir_bench(lib: ctypes.CDLL, runtime_ir_dir: Path, warmup: int, iterations
 
         forward_wall: list[float] = []
         full_to_verts_wall: list[float] = []
-        core: list[float] = []
+        timing_samples: list[MhrRuntimeDebugTiming] = []
         for _ in range(iterations):
             full_start = time.perf_counter()
             check_ok(lib.mhr_data_reset(model, data), "mhr_data_reset", lib.mhr_data_last_error(data))
@@ -447,7 +477,7 @@ def run_ir_bench(lib: ctypes.CDLL, runtime_ir_dir: Path, warmup: int, iterations
                 "mhr_get_debug_timing",
                 lib.mhr_data_last_error(data),
             )
-            core.append(float(timing.evaluate_core_ms))
+            timing_samples.append(timing)
 
         return {
             "counts": {
@@ -462,7 +492,8 @@ def run_ir_bench(lib: ctypes.CDLL, runtime_ir_dir: Path, warmup: int, iterations
             },
             "forwardWallMs": summarize(forward_wall),
             "fullToVertsWallMs": summarize(full_to_verts_wall),
-            "evaluateCoreMs": summarize(core),
+            "evaluateCoreMs": summarize([float(sample.evaluate_core_ms) for sample in timing_samples]),
+            "stageTimingsMs": summarize_stage_timings(timing_samples),
         }
     finally:
         if data.value:

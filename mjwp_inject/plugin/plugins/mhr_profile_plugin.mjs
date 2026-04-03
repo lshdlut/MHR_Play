@@ -43,7 +43,17 @@ const GHOST_MESH_OPACITY = 0.5;
 const INFLUENCE_PREVIEW_MIN_NORMALIZED = 0.05;
 const INFLUENCE_PREVIEW_SCALE_UP_ALPHA = 0.18;
 const INFLUENCE_PREVIEW_SCALE_DOWN_ALPHA = 0.08;
-const FAMILY_RANDOM_COMMIT_INTERVAL_MS = 16;
+const FAMILY_RANDOM_TARGET_FPS_TIERS = Object.freeze([60, 30, 15, 5]);
+const FAMILY_RANDOM_DEFAULT_TARGET_FPS = 60;
+const FAMILY_RANDOM_ROUNDTRIP_EMA_ALPHA = 0.24;
+const FAMILY_RANDOM_TARGET_MAX_ROUNDTRIP_MS = Object.freeze({
+  60: 45,
+  30: 90,
+  15: 180,
+  5: Number.POSITIVE_INFINITY,
+});
+const FAMILY_RANDOM_DOWNSHIFT_STREAK = 6;
+const FAMILY_RANDOM_UPSHIFT_STREAK = 10;
 const FAMILY_RANDOM_TRANSITION_MIN_MS = 900;
 const FAMILY_RANDOM_TRANSITION_MAX_MS = 1500;
 const UI_BLEND_ABS_RANGE = 6.0;
@@ -75,17 +85,46 @@ const tempLabelScreen = new THREE.Vector3();
 const skinBaseColor = new THREE.Color(SKIN_BASE_COLOR_HEX);
 const tempPreviewColor = new THREE.Color();
 const tempMeshColor = new THREE.Color();
-const PERF_HUD_ALPHA = 0.2;
 const PERF_HUD_STALE_MS = 2000;
+const PERF_HUD_WINDOW_MS = 1000;
+const PERF_HUD_MAX_SAMPLES = 240;
 
-function smoothFps(nextSample, currentValue) {
-  if (!Number.isFinite(nextSample) || nextSample <= 0) {
-    return Number.isFinite(currentValue) && currentValue > 0 ? currentValue : 0;
+function prunePerfHudSamples(samples, nowMs) {
+  if (!Array.isArray(samples) || samples.length === 0) {
+    return samples;
   }
-  if (!Number.isFinite(currentValue) || currentValue <= 0) {
-    return nextSample;
+  while (samples.length > 0 && (nowMs - samples[0]) > PERF_HUD_WINDOW_MS) {
+    samples.shift();
   }
-  return currentValue * (1 - PERF_HUD_ALPHA) + nextSample * PERF_HUD_ALPHA;
+  if (samples.length > PERF_HUD_MAX_SAMPLES) {
+    samples.splice(0, samples.length - PERF_HUD_MAX_SAMPLES);
+  }
+  return samples;
+}
+
+function recordPerfHudSample(samples, nowMs) {
+  if (!Array.isArray(samples)) {
+    return;
+  }
+  samples.push(nowMs);
+  prunePerfHudSamples(samples, nowMs);
+}
+
+function measurePerfHudFps(samples, nowMs) {
+  if (!Array.isArray(samples) || samples.length < 2) {
+    return 0;
+  }
+  prunePerfHudSamples(samples, nowMs);
+  if (samples.length < 2) {
+    return 0;
+  }
+  const start = samples[0];
+  const end = samples[samples.length - 1];
+  const spanMs = end - start;
+  if (!(spanMs > 0)) {
+    return 0;
+  }
+  return ((samples.length - 1) * 1000) / spanMs;
 }
 
 function formatHudFps(value) {
@@ -392,8 +431,11 @@ function ensureMeshHandle(sceneState, topology, vertices) {
   });
   sceneState.meshGeometry = geometry;
   sceneState.meshVertexCount = vertexCount;
+  sceneState.meshBoundsDirty = true;
+  sceneState.meshColorModeKey = '';
   if (sceneState.meshHandle?.mesh) {
     sceneState.meshHandle.mesh.scale.setScalar(DISPLAY_UNIT_SCALE_METERS);
+    sceneState.meshHandle.mesh.frustumCulled = false;
   }
   syncSkinTransparency(sceneState);
 }
@@ -606,6 +648,30 @@ function fitCameraToMesh(host, sceneState, { force = false } = {}) {
   sceneState.cameraFramed = true;
 }
 
+function syncTraceFields(targetTrace, patch) {
+  if (!targetTrace || typeof targetTrace !== 'object' || !patch || typeof patch !== 'object') {
+    return;
+  }
+  targetTrace.mainThread = {
+    ...(targetTrace.mainThread || {}),
+    ...patch,
+  };
+}
+
+function ensureMeshBounds(sceneState) {
+  const geometry = sceneState?.meshGeometry || null;
+  if (!geometry) {
+    return false;
+  }
+  if (sceneState?.cameraFramed && !sceneState?.meshBoundsDirty) {
+    return false;
+  }
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  sceneState.meshBoundsDirty = false;
+  return true;
+}
+
 function syncSkinTransparency(sceneState) {
   const material = sceneState?.meshHandle?.mesh?.material || null;
   if (!material) {
@@ -628,11 +694,11 @@ function syncMeshVisibility(sceneState, runtimeVisible = true) {
 function writeMeshColors(sceneState, vertices) {
   const geometry = sceneState?.meshGeometry || null;
   if (!geometry) {
-    return;
+    return false;
   }
   const color = geometry.getAttribute('color');
   if (!color) {
-    return;
+    return false;
   }
   const preview = sceneState?.influencePreviewVisible ? (sceneState?.influencePreviewData || null) : null;
   const vertexCount = Math.max(0, (vertices?.length || 0) / 3);
@@ -648,6 +714,12 @@ function writeMeshColors(sceneState, vertices) {
       1e-9,
     )
     : 1;
+  const nextColorModeKey = hasPreview
+    ? `preview:${String(preview.parameterKey || '')}:${String(preview.stateSection || '')}:${Number(preview.revision || 0)}:${maxMagnitude}:${vertexCount}`
+    : 'base';
+  if (sceneState?.meshColorModeKey === nextColorModeKey) {
+    return false;
+  }
   for (let index = 0; index < vertexCount; index += 1) {
     const normalized = hasPreview
       ? clampToBounds(Number(magnitudes?.[index] || 0) / maxMagnitude, 0, 1)
@@ -667,6 +739,8 @@ function writeMeshColors(sceneState, vertices) {
     color.array[base + 2] = tempMeshColor.b;
   }
   color.needsUpdate = true;
+  sceneState.meshColorModeKey = nextColorModeKey;
+  return true;
 }
 
 function syncSkeletonVisibility(sceneState) {
@@ -1013,6 +1087,7 @@ export async function registerPlayPlugin(host) {
         service: mhrService,
         getSnapshot: () => mhrService.snapshot(),
         applyPatch: (statePatch, options) => mhrService.applyPatch(statePatch, options),
+        previewInfluence: (request) => mhrService.previewInfluence(request),
         loadAssets: (assetConfig) => mhrService.loadAssets(assetConfig),
         hasPendingCommit: () => mhrService.hasPendingCommit(),
       };
@@ -1022,9 +1097,10 @@ export async function registerPlayPlugin(host) {
     || typeof mhrService.snapshot !== 'function'
     || typeof mhrService.subscribe !== 'function'
     || typeof mhrService.applyPatch !== 'function'
+    || typeof mhrService.previewInfluence !== 'function'
     || typeof mhrService.loadAssets !== 'function'
     || typeof mhrService.hasPendingCommit !== 'function') {
-    throw new Error('mhr_profile_plugin requires an MHR service with snapshot/subscribe/applyPatch/loadAssets/hasPendingCommit.');
+    throw new Error('mhr_profile_plugin requires an MHR service with snapshot/subscribe/applyPatch/previewInfluence/loadAssets/hasPendingCommit.');
   }
   if (typeof host?.renderer?.labelOverlay?.register !== 'function') {
     throw new Error('mhr_profile_plugin requires Play renderer.labelOverlay.register.');
@@ -1057,6 +1133,8 @@ export async function registerPlayPlugin(host) {
     skeletonAxisDrawCount: 0,
     lightsReady: false,
     cameraFramed: false,
+    meshBoundsDirty: true,
+    meshColorModeKey: '',
     displayAlignmentRx: 0,
     darkTheme: isDarkThemeState(host.store?.get?.()),
     skinVisible: true,
@@ -1084,22 +1162,35 @@ export async function registerPlayPlugin(host) {
       fixed: null,
     },
     familyRandomLastCommitTs: 0,
+    familyRandomNextCommitTs: 0,
+    familyRandomLastSubmittedSignature: '',
+    familyRandomCadenceMs: 1000 / FAMILY_RANDOM_DEFAULT_TARGET_FPS,
+    familyRandomCadenceFps: FAMILY_RANDOM_DEFAULT_TARGET_FPS,
+    familyRandomObservedRoundtripMs: 1000 / FAMILY_RANDOM_DEFAULT_TARGET_FPS,
+    familyRandomUpshiftVotes: 0,
+    familyRandomDownshiftVotes: 0,
+    influencePreviewRequestSeq: 0,
+    influencePreviewQueuedRequest: null,
+    influencePreviewQueuedKey: '',
+    influencePreviewInFlightKey: '',
+    influencePreviewLoopActive: false,
     lodSwitchInFlight: false,
   };
   const perfHudState = {
     root: null,
     frontValueEl: null,
     backendValueEl: null,
-    lastFrameTsMs: 0,
-    lastBackendTsMs: 0,
+    lastFrontSampleTsMs: 0,
+    lastBackendSampleTsMs: 0,
     lastBackendSeq: -1,
-    frontFps: 0,
-    backendFps: 0,
+    frontSamples: [],
+    backendSamples: [],
   };
   let mhrSnapshot = mhrService.snapshot();
   let mhrUnsubscribe = () => {};
   let traceSeq = 0;
   let lastDebugTrace = null;
+  let lastRenderedPreviewToken = '';
   const DISPLAY_COMPARE_MODE = 'both';
   const debugTraceEnabled = isDebugTraceEnabled();
   const rowRegistry = {
@@ -1122,7 +1213,6 @@ export async function registerPlayPlugin(host) {
   let uiStructureDirty = true;
   let controlsDirty = true;
   let sceneDirty = true;
-  let interactiveSyncHoldUntilTs = 0;
   let sunPresetReady = false;
   let sunPresetPromise = null;
   globalThis.__MHR_DEBUG_TRACE__ = null;
@@ -1309,6 +1399,7 @@ export async function registerPlayPlugin(host) {
     const nextAssetsKey = currentAssetsKey(nextSnapshot);
     const nextRevision = Number(getMhrSnapshot(nextSnapshot)?.revision || 0);
     const nextEvaluationSeq = Number(getMhrSnapshot(nextSnapshot)?.evaluation?.seq || 0);
+    const nextPreviewToken = buildInfluencePreviewSnapshotToken(nextSnapshot);
     if (nextAssetsKey !== lastRenderedAssetsKey) {
       uiStructureDirty = true;
       controlsDirty = true;
@@ -1321,22 +1412,29 @@ export async function registerPlayPlugin(host) {
       if (nextEvaluationSeq !== lastRenderedEvaluationSeq) {
         sceneDirty = true;
       }
+      if (sceneState.influencePreviewVisible && nextPreviewToken !== lastRenderedPreviewToken) {
+        sceneDirty = true;
+      }
     }
     const nextTrace = getMhrSnapshot(nextSnapshot)?.evaluation?.debug?.debugTiming ?? null;
     if (nextTrace && typeof nextTrace === 'object') {
       lastDebugTrace = nextTrace;
+      updateFamilyRandomObservedRoundtripMs(nextTrace);
       globalThis.__MHR_DEBUG_TRACE__ = debugTraceEnabled ? nextTrace : null;
     }
     const nowMs = performance.now();
     if (nextEvaluationSeq > 0 && nextEvaluationSeq !== perfHudState.lastBackendSeq) {
-      if (perfHudState.lastBackendTsMs > 0) {
-        const deltaMs = Math.max(1, nowMs - perfHudState.lastBackendTsMs);
-        perfHudState.backendFps = smoothFps(1000 / deltaMs, perfHudState.backendFps);
-      }
-      perfHudState.lastBackendTsMs = nowMs;
+      recordPerfHudSample(perfHudState.backendSamples, nowMs);
+      perfHudState.lastBackendSampleTsMs = nowMs;
       perfHudState.lastBackendSeq = nextEvaluationSeq;
     }
     updatePerfHudText(nowMs);
+    if (sceneState.influencePreviewVisible) {
+      const hasSnapshotPreview = consumeSnapshotInfluencePreview(nextSnapshot);
+      if (!hasSnapshotPreview) {
+        queueCurrentInfluencePreviewRequest();
+      }
+    }
     if (sceneDirty) {
       host.renderer.ensureLoop?.();
     }
@@ -1346,6 +1444,9 @@ export async function registerPlayPlugin(host) {
     sceneState.influencePreviewData = null;
     sceneState.influencePreviewScaleKey = '';
     sceneState.influencePreviewScaleMax = 0;
+    sceneState.influencePreviewQueuedRequest = null;
+    sceneState.influencePreviewQueuedKey = '';
+    sceneState.meshColorModeKey = '';
   }
 
   function ensurePerfHud() {
@@ -1386,12 +1487,12 @@ export async function registerPlayPlugin(host) {
     if (!perfHudState.root?.isConnected) {
       return;
     }
-    const frontFps = nowMs - perfHudState.lastFrameTsMs > PERF_HUD_STALE_MS
+    const frontFps = nowMs - perfHudState.lastFrontSampleTsMs > PERF_HUD_STALE_MS
       ? 0
-      : perfHudState.frontFps;
-    const backendFps = nowMs - perfHudState.lastBackendTsMs > PERF_HUD_STALE_MS
+      : measurePerfHudFps(perfHudState.frontSamples, nowMs);
+    const backendFps = nowMs - perfHudState.lastBackendSampleTsMs > PERF_HUD_STALE_MS
       ? 0
-      : perfHudState.backendFps;
+      : measurePerfHudFps(perfHudState.backendSamples, nowMs);
     if (perfHudState.frontValueEl) {
       perfHudState.frontValueEl.textContent = formatHudFps(frontFps);
     }
@@ -1442,8 +1543,29 @@ export async function registerPlayPlugin(host) {
     };
   }
 
-  function consumeSnapshotInfluencePreview(snapshot = mhrSnapshot) {
+  function buildInfluencePreviewRequestKey(preview = null) {
+    if (!preview || typeof preview !== 'object') {
+      return '';
+    }
+    return [
+      String(preview?.parameterKey || ''),
+      String(preview?.stateSection || ''),
+      Number(preview?.revision || 0),
+    ].join('|');
+  }
+
+  function buildInfluencePreviewSnapshotToken(snapshot = mhrSnapshot) {
     const preview = getMhrSnapshot(snapshot)?.evaluation?.influencePreview || null;
+    if (!preview) {
+      return '';
+    }
+    return [
+      Number(preview?.previewId || 0),
+      buildInfluencePreviewRequestKey(preview),
+    ].join('|');
+  }
+
+  function applyInfluencePreviewPayload(preview = null) {
     if (!sceneState.influencePreviewVisible || !preview) {
       return false;
     }
@@ -1464,6 +1586,70 @@ export async function registerPlayPlugin(host) {
       magnitudes: preview?.magnitudes instanceof Float32Array ? preview.magnitudes : null,
     };
     return true;
+  }
+
+  function consumeSnapshotInfluencePreview(snapshot = mhrSnapshot) {
+    const preview = getMhrSnapshot(snapshot)?.evaluation?.influencePreview || null;
+    return applyInfluencePreviewPayload(preview);
+  }
+
+  function kickInfluencePreviewLoop() {
+    if (sceneState.influencePreviewLoopActive
+      || !sceneState.influencePreviewVisible
+      || sceneState.lodSwitchInFlight
+      || mhrService.hasPendingCommit?.()) {
+      return;
+    }
+    const request = sceneState.influencePreviewQueuedRequest;
+    const requestKey = sceneState.influencePreviewQueuedKey;
+    if (!request || !requestKey) {
+      return;
+    }
+    sceneState.influencePreviewQueuedRequest = null;
+    sceneState.influencePreviewQueuedKey = '';
+    sceneState.influencePreviewInFlightKey = requestKey;
+    sceneState.influencePreviewLoopActive = true;
+    mhrService.previewInfluence(request)
+      .catch((error) => reportError('previewInfluence', error))
+      .finally(() => {
+        sceneState.influencePreviewLoopActive = false;
+        sceneState.influencePreviewInFlightKey = '';
+        if (!sceneState.influencePreviewVisible || sceneState.lodSwitchInFlight) {
+          return;
+        }
+        if (sceneState.influencePreviewQueuedRequest && !mhrService.hasPendingCommit?.()) {
+          kickInfluencePreviewLoop();
+        }
+      });
+  }
+
+  function queueCurrentInfluencePreviewRequest(options = {}) {
+    if (!sceneState.influencePreviewVisible || sceneState.lodSwitchInFlight) {
+      return;
+    }
+    const baseRequest = buildCurrentInfluencePreviewRequest();
+    if (!baseRequest) {
+      return;
+    }
+    const requestKey = buildInfluencePreviewRequestKey(baseRequest);
+    const snapshotPreviewKey = buildInfluencePreviewRequestKey(
+      getMhrSnapshot(mhrSnapshot)?.evaluation?.influencePreview || null,
+    );
+    if (!options?.force) {
+      if (!requestKey
+        || requestKey === snapshotPreviewKey
+        || requestKey === sceneState.influencePreviewQueuedKey
+        || requestKey === sceneState.influencePreviewInFlightKey) {
+        return;
+      }
+    }
+    sceneState.influencePreviewRequestSeq += 1;
+    sceneState.influencePreviewQueuedRequest = {
+      ...baseRequest,
+      previewId: sceneState.influencePreviewRequestSeq,
+    };
+    sceneState.influencePreviewQueuedKey = requestKey;
+    kickInfluencePreviewLoop();
   }
 
   function findSelectedRowState() {
@@ -1493,13 +1679,9 @@ export async function registerPlayPlugin(host) {
       if (!hasSnapshotPreview) {
         clearInfluencePreview();
       }
+      queueCurrentInfluencePreviewRequest({ force: true });
       host.renderer.ensureLoop?.();
     }
-  }
-
-  function holdInteractivePanelSync() {
-    interactiveSyncHoldUntilTs = performance.now() + 120;
-    controlsDirty = true;
   }
 
   function createTrace(parameter, source, rawValue) {
@@ -1550,7 +1732,6 @@ export async function registerPlayPlugin(host) {
     }
     const numeric = Number(rawValue);
     const nextValue = clampToParameter(parameter, numeric);
-    holdInteractivePanelSync();
     const trace = createTrace(parameter, options.source || 'ui', nextValue);
     if (trace) {
       const dispatchTs = nowTraceTs();
@@ -1858,6 +2039,131 @@ export async function registerPlayPlugin(host) {
     return JSON.stringify(patch || {});
   }
 
+  function readTraceRoundtripMs(trace = lastDebugTrace) {
+    const inputTs = Number(trace?.plugin?.inputTs);
+    const receiveTs = Number(trace?.mainThread?.evaluationEventReceiveTs);
+    if (!Number.isFinite(inputTs) || !Number.isFinite(receiveTs) || receiveTs <= inputTs) {
+      return null;
+    }
+    return receiveTs - inputTs;
+  }
+
+  function updateFamilyRandomObservedRoundtripMs(trace = lastDebugTrace) {
+    if (!Object.values(sceneState.familyRandomEnabled).some(Boolean)) {
+      sceneState.familyRandomUpshiftVotes = 0;
+      sceneState.familyRandomDownshiftVotes = 0;
+      return sceneState.familyRandomObservedRoundtripMs;
+    }
+    if (String(trace?.source || '') !== 'family-random') {
+      return sceneState.familyRandomObservedRoundtripMs;
+    }
+    const nextRoundtripMs = readTraceRoundtripMs(trace);
+    if (!Number.isFinite(nextRoundtripMs) || nextRoundtripMs <= 0) {
+      sceneState.familyRandomUpshiftVotes = 0;
+      sceneState.familyRandomDownshiftVotes = 0;
+      return sceneState.familyRandomObservedRoundtripMs;
+    }
+    const previous = Number(sceneState.familyRandomObservedRoundtripMs || 0);
+    if (!Number.isFinite(previous) || previous <= 0) {
+      sceneState.familyRandomObservedRoundtripMs = nextRoundtripMs;
+      return sceneState.familyRandomObservedRoundtripMs;
+    }
+    sceneState.familyRandomObservedRoundtripMs =
+      previous + ((nextRoundtripMs - previous) * FAMILY_RANDOM_ROUNDTRIP_EMA_ALPHA);
+    return sceneState.familyRandomObservedRoundtripMs;
+  }
+
+  function chooseFamilyRandomTargetFps() {
+    const roundtripMs = Number(sceneState.familyRandomObservedRoundtripMs || 0);
+    if (!Number.isFinite(roundtripMs) || roundtripMs <= 0) {
+      return FAMILY_RANDOM_DEFAULT_TARGET_FPS;
+    }
+    const currentFps = Number(sceneState.familyRandomCadenceFps || FAMILY_RANDOM_DEFAULT_TARGET_FPS);
+    let index = FAMILY_RANDOM_TARGET_FPS_TIERS.indexOf(currentFps);
+    if (index < 0) {
+      index = FAMILY_RANDOM_TARGET_FPS_TIERS.indexOf(FAMILY_RANDOM_DEFAULT_TARGET_FPS);
+      if (index < 0) {
+        index = 0;
+      }
+    }
+    let desiredIndex = FAMILY_RANDOM_TARGET_FPS_TIERS.length - 1;
+    for (let candidateIndex = 0; candidateIndex < FAMILY_RANDOM_TARGET_FPS_TIERS.length; candidateIndex += 1) {
+      const candidateFps = FAMILY_RANDOM_TARGET_FPS_TIERS[candidateIndex];
+      const maxRoundtripMs = Number(FAMILY_RANDOM_TARGET_MAX_ROUNDTRIP_MS[candidateFps] || 0);
+      if (roundtripMs <= maxRoundtripMs) {
+        desiredIndex = candidateIndex;
+        break;
+      }
+    }
+    if (desiredIndex > index) {
+      sceneState.familyRandomDownshiftVotes += 1;
+      sceneState.familyRandomUpshiftVotes = 0;
+      if (sceneState.familyRandomDownshiftVotes >= FAMILY_RANDOM_DOWNSHIFT_STREAK) {
+        sceneState.familyRandomDownshiftVotes = 0;
+        index = desiredIndex;
+      }
+    } else if (desiredIndex < index) {
+      sceneState.familyRandomUpshiftVotes += 1;
+      sceneState.familyRandomDownshiftVotes = 0;
+      if (sceneState.familyRandomUpshiftVotes >= FAMILY_RANDOM_UPSHIFT_STREAK) {
+        sceneState.familyRandomUpshiftVotes = 0;
+        index = desiredIndex;
+      }
+    } else {
+      sceneState.familyRandomUpshiftVotes = 0;
+      sceneState.familyRandomDownshiftVotes = 0;
+    }
+    return FAMILY_RANDOM_TARGET_FPS_TIERS[index];
+  }
+
+  function hasActiveFamilyRandomFamilies() {
+    return Object.values(sceneState.familyRandomEnabled).some(Boolean);
+  }
+
+  function resetFamilyRandomCadenceState() {
+    sceneState.familyRandomLastCommitTs = 0;
+    sceneState.familyRandomNextCommitTs = 0;
+    sceneState.familyRandomLastSubmittedSignature = '';
+    sceneState.familyRandomCadenceMs = 1000 / FAMILY_RANDOM_DEFAULT_TARGET_FPS;
+    sceneState.familyRandomCadenceFps = FAMILY_RANDOM_DEFAULT_TARGET_FPS;
+    sceneState.familyRandomObservedRoundtripMs = 1000 / FAMILY_RANDOM_DEFAULT_TARGET_FPS;
+    sceneState.familyRandomUpshiftVotes = 0;
+    sceneState.familyRandomDownshiftVotes = 0;
+  }
+
+  function updateFamilyRandomCommitSchedule(nowMs, targetFps) {
+    const intervalMs = 1000 / targetFps;
+    const previousFps = Number(sceneState.familyRandomCadenceFps || 0);
+    const previousNextCommitTs = Number(sceneState.familyRandomNextCommitTs || 0);
+    sceneState.familyRandomCadenceMs = intervalMs;
+    sceneState.familyRandomCadenceFps = targetFps;
+    if (!Number.isFinite(previousNextCommitTs) || previousNextCommitTs <= 0) {
+      sceneState.familyRandomNextCommitTs = nowMs;
+      return;
+    }
+    if (previousFps !== targetFps) {
+      const baseCommitTs = Number(sceneState.familyRandomLastCommitTs || nowMs);
+      sceneState.familyRandomNextCommitTs = Math.max(previousNextCommitTs, baseCommitTs + intervalMs);
+    }
+  }
+
+  function advanceFamilyRandomCommitSchedule(nowMs) {
+    const intervalMs = Number(sceneState.familyRandomCadenceMs || 0);
+    sceneState.familyRandomLastCommitTs = nowMs;
+    if (!(intervalMs > 0)) {
+      sceneState.familyRandomNextCommitTs = nowMs;
+      return;
+    }
+    let nextCommitTs = Number(sceneState.familyRandomNextCommitTs || nowMs);
+    if (!Number.isFinite(nextCommitTs) || nextCommitTs <= 0) {
+      nextCommitTs = nowMs;
+    }
+    do {
+      nextCommitTs += intervalMs;
+    } while (nextCommitTs <= nowMs);
+    sceneState.familyRandomNextCommitTs = nextCommitTs;
+  }
+
   function driveFamilyRandomAnimation() {
     if (sceneState.lodSwitchInFlight) {
       return;
@@ -1872,13 +2178,11 @@ export async function registerPlayPlugin(host) {
     ];
     const patch = Object.create(null);
     let hasValues = false;
-    let minLastSubmittedAt = now;
     for (const [familyKey, parameters] of families) {
       if (!sceneState.familyRandomEnabled[familyKey] || !parameters.length) {
         continue;
       }
       const animationState = ensureFamilyRandomAnimationState(familyKey, parameters);
-      minLastSubmittedAt = Math.min(minLastSubmittedAt, Number(animationState.lastSubmittedAt || 0));
       const familyPatch = buildFamilyInterpolatedPatch(parameters, animationState, now);
       if (!familyPatch) {
         continue;
@@ -1896,41 +2200,45 @@ export async function registerPlayPlugin(host) {
     if (!hasValues) {
       return;
     }
-    if ((now - minLastSubmittedAt) < FAMILY_RANDOM_COMMIT_INTERVAL_MS) {
+    const targetFps = chooseFamilyRandomTargetFps();
+    updateFamilyRandomCommitSchedule(now, targetFps);
+    if (now < Number(sceneState.familyRandomNextCommitTs || 0)) {
       host.renderer.ensureLoop?.();
       return;
     }
     const signature = patchSignature(patch);
-    let changed = false;
-    for (const [familyKey] of families) {
-      if (!sceneState.familyRandomEnabled[familyKey]) {
-        continue;
-      }
-      const animationState = sceneState.familyRandomState[familyKey];
-      if (!animationState || animationState.lastSubmittedSignature === signature) {
-        continue;
-      }
-      animationState.lastSubmittedSignature = signature;
-      animationState.lastSubmittedAt = now;
-      changed = true;
-    }
-    if (!changed) {
+    if (signature === sceneState.familyRandomLastSubmittedSignature) {
+      advanceFamilyRandomCommitSchedule(now);
       host.renderer.ensureLoop?.();
       return;
     }
+    sceneState.familyRandomLastSubmittedSignature = signature;
+    advanceFamilyRandomCommitSchedule(now);
     const patchedFamilies = new Set(
       families
         .filter(([familyKey]) => sceneState.familyRandomEnabled[familyKey])
         .map(([familyKey]) => familyKey),
     );
+    const trace = {
+      traceId: `mhr-trace-${++traceSeq}`,
+      parameterKey: 'family-random',
+      stateSection: 'multi',
+      source: 'family-random',
+      plugin: {
+        inputTs: nowTraceTs(),
+      },
+    };
     mhrService.applyPatch(patch, {
       interactive: true,
       compareMode: DISPLAY_COMPARE_MODE,
-      previewInfluence: null,
+      __debugTiming: trace,
     }).catch((error) => {
       for (const familyKey of patchedFamilies) {
         sceneState.familyRandomEnabled[familyKey] = false;
         sceneState.familyRandomState[familyKey] = null;
+      }
+      if (!hasActiveFamilyRandomFamilies()) {
+        resetFamilyRandomCadenceState();
       }
       reportError('family-random:interactive', error);
     });
@@ -2026,9 +2334,7 @@ export async function registerPlayPlugin(host) {
       return;
     }
     const nextValue = clampToParameter(rowState.parameter, parsed);
-    rowState.range.value = String(getRangeDisplayValue(rowState.parameter, nextValue));
-    rowState.textbox.value = formatParameterValue(nextValue);
-    rowState.draft = rowState.textbox.value;
+    rowState.draft = raw;
     queueParameterValue(rowState.parameter, nextValue, { source: 'textbox' });
   }
 
@@ -2065,12 +2371,7 @@ export async function registerPlayPlugin(host) {
       onInput: (_event, nextValue) => {
         setSelectedParameter(parameter, rowKey);
         const clamped = clampToBounds(nextValue, min, max);
-        const currentRow = findRowState(rowKey);
         range.value = String(clamped);
-        if (currentRow && !currentRow.editing) {
-          currentRow.textbox.value = formatParameterValue(clamped);
-          currentRow.draft = currentRow.textbox.value;
-        }
         dispatchInteractiveParameterValue(parameter, clamped, { source: 'slider' });
       },
     });
@@ -2284,7 +2585,10 @@ export async function registerPlayPlugin(host) {
       testId: 'mhr-align-view',
       onClick: () => {
         sceneState.cameraFramed = false;
-        fitCameraToMesh(host, sceneState, { force: true });
+        sceneState.meshBoundsDirty = true;
+        if (ensureMeshBounds(sceneState)) {
+          fitCameraToMesh(host, sceneState, { force: true });
+        }
         host.renderer.ensureLoop?.();
       },
     });
@@ -2464,6 +2768,7 @@ export async function registerPlayPlugin(host) {
             if (!hasSnapshotPreview) {
               clearInfluencePreview();
             }
+            queueCurrentInfluencePreviewRequest({ force: true });
           }
           sceneDirty = true;
           host.renderer.ensureLoop?.();
@@ -2488,16 +2793,20 @@ export async function registerPlayPlugin(host) {
       testId: item.testId,
       onChange: (nextValue) => {
         sceneState.familyRandomEnabled[item.key] = nextValue;
+        sceneState.familyRandomUpshiftVotes = 0;
+        sceneState.familyRandomDownshiftVotes = 0;
         const parameters = getFamilyParameters(item.key);
         if (!parameters.length) {
           return;
         }
         if (!nextValue) {
           sceneState.familyRandomState[item.key] = null;
+          if (!hasActiveFamilyRandomFamilies()) {
+            resetFamilyRandomCadenceState();
+          }
           mhrService.applyPatch(buildResetPatch(parameters), {
             interactive: true,
             compareMode: DISPLAY_COMPARE_MODE,
-            previewInfluence: null,
           }).catch((error) => {
             sceneState.familyRandomEnabled[item.key] = true;
             reportError(`family-random:${item.key}`, error);
@@ -2506,6 +2815,9 @@ export async function registerPlayPlugin(host) {
           return;
         }
         sceneState.familyRandomState[item.key] = createFamilyRandomAnimationState(item.key, parameters);
+        if (hasActiveFamilyRandomFamilies() && !(sceneState.familyRandomNextCommitTs > 0)) {
+          sceneState.familyRandomNextCommitTs = performance.now();
+        }
         host.renderer.ensureLoop?.();
       },
     }));
@@ -2580,6 +2892,9 @@ export async function registerPlayPlugin(host) {
 
     let afterGeometryUploadTs = geometryStartTs;
     let afterNormalsTs = geometryStartTs;
+    let afterBoundsTs = geometryStartTs;
+    let afterColorTs = geometryStartTs;
+    let colorApplied = false;
     if (sceneState.meshGeometry) {
       const position = sceneState.meshGeometry.getAttribute('position');
       position.array.set(evaluation.mesh.vertices, 0);
@@ -2587,13 +2902,17 @@ export async function registerPlayPlugin(host) {
       afterGeometryUploadTs = nowTraceTs();
       sceneState.meshGeometry.computeVertexNormals();
       afterNormalsTs = nowTraceTs();
-      sceneState.meshGeometry.computeBoundingBox();
-      sceneState.meshGeometry.computeBoundingSphere();
-      fitCameraToMesh(host, sceneState);
+      if (ensureMeshBounds(sceneState)) {
+        fitCameraToMesh(host, sceneState);
+        afterBoundsTs = nowTraceTs();
+      } else {
+        afterBoundsTs = afterNormalsTs;
+      }
       if (sceneState.meshHandle?.mesh) {
         syncMeshVisibility(sceneState, evaluation.mesh.visible !== false);
       }
-      writeMeshColors(sceneState, evaluation.mesh.vertices);
+      colorApplied = writeMeshColors(sceneState, evaluation.mesh.vertices) === true;
+      afterColorTs = colorApplied ? nowTraceTs() : afterBoundsTs;
     }
 
     writeSkeleton(
@@ -2609,16 +2928,18 @@ export async function registerPlayPlugin(host) {
     );
     const afterSkeletonTs = nowTraceTs();
     if (trace) {
-      trace.mainThread = {
-        ...(trace.mainThread || {}),
+      syncTraceFields(trace, {
         eventToGeometryStartMs: Number.isFinite(Number(trace.mainThread?.evaluationEventReceiveTs))
           ? geometryStartTs - Number(trace.mainThread.evaluationEventReceiveTs)
           : 0,
         geometryApplyMs: afterGeometryUploadTs - geometryStartTs,
         normalsUpdateMs: afterNormalsTs - afterGeometryUploadTs,
-        skeletonApplyMs: afterSkeletonTs - afterNormalsTs,
+        boundsUpdateMs: afterBoundsTs - afterNormalsTs,
+        meshColorApplyMs: afterColorTs - afterBoundsTs,
+        meshColorApplied: colorApplied,
+        skeletonApplyMs: afterSkeletonTs - afterColorTs,
         geometryApplyCompleteTs: afterSkeletonTs,
-      };
+      });
       lastDebugTrace = trace;
       globalThis.__MHR_DEBUG_TRACE__ = trace;
       requestAnimationFrame(() => {
@@ -2640,19 +2961,13 @@ export async function registerPlayPlugin(host) {
         });
       });
     }
+    lastRenderedPreviewToken = buildInfluencePreviewSnapshotToken(mhrSnapshot);
     host.renderer.ensureLoop?.();
   }
 
   function currentAssetsKey(snapshot = mhrSnapshot) {
     const assets = getMhrSnapshot(snapshot)?.assets || null;
     return `${assets?.bundleId || ''}:${assets?.parameterMetadata?.parameters?.length || 0}`;
-  }
-
-  function hasUiCommitInFlight() {
-    return (
-      mhrService.hasPendingCommit()
-      || performance.now() < interactiveSyncHoldUntilTs
-    );
   }
 
   function flushUiStructure() {
@@ -2673,7 +2988,7 @@ export async function registerPlayPlugin(host) {
   }
 
   function flushControlValues() {
-    if (!controlsDirty || hasUiCommitInFlight()) {
+    if (!controlsDirty) {
       return;
     }
     syncPanelValues('scale', getScaleParameters());
@@ -2797,23 +3112,16 @@ export async function registerPlayPlugin(host) {
         return;
       }
       flushUiStructure();
-    }),
-    onUiControlsTick(() => {
-      if (!mhrSnapshot) {
-        return;
-      }
       flushControlValues();
+      kickInfluencePreviewLoop();
     }),
     onFrame(() => {
       if (!mhrSnapshot) {
         return;
       }
       const nowMs = performance.now();
-      if (perfHudState.lastFrameTsMs > 0) {
-        const deltaMs = Math.max(1, nowMs - perfHudState.lastFrameTsMs);
-        perfHudState.frontFps = smoothFps(1000 / deltaMs, perfHudState.frontFps);
-      }
-      perfHudState.lastFrameTsMs = nowMs;
+      recordPerfHudSample(perfHudState.frontSamples, nowMs);
+      perfHudState.lastFrontSampleTsMs = nowMs;
       updatePerfHudText(nowMs);
       driveFamilyRandomAnimation();
       flushScene();

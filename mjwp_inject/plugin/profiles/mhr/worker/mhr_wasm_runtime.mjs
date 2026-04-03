@@ -10,7 +10,9 @@ const ARRAY_VIEW_SIZE = 24;
 const BUNDLE_VIEW_SIZE = 12;
 const MODEL_COUNTS_SIZE = 40;
 const DERIVED_VALUE_COUNT = 7;
-const DEBUG_TIMING_VALUE_COUNT = 6;
+const DEBUG_TIMING_LEGACY_VALUE_COUNT = 6;
+const DEBUG_TIMING_STAGE_VALUE_COUNT = 8;
+const DEBUG_TIMING_VALUE_COUNT = DEBUG_TIMING_LEGACY_VALUE_COUNT + DEBUG_TIMING_STAGE_VALUE_COUNT;
 
 function nowMs() {
   return performance.now();
@@ -73,6 +75,17 @@ function readCounts(module, ptr) {
 
 function readDebugTiming(ptr, module) {
   const heapView = new Float32Array(module.HEAPU8.buffer, ptr, DEBUG_TIMING_VALUE_COUNT);
+  const stageTimings = {
+    parameterDecodeMs: heapView[DEBUG_TIMING_LEGACY_VALUE_COUNT + 0] || 0,
+    jointWorldTransformsMs: heapView[DEBUG_TIMING_LEGACY_VALUE_COUNT + 1] || 0,
+    surfaceMorphMs: heapView[DEBUG_TIMING_LEGACY_VALUE_COUNT + 2] || 0,
+    poseFeaturesMs: heapView[DEBUG_TIMING_LEGACY_VALUE_COUNT + 3] || 0,
+    correctiveStage1Ms: heapView[DEBUG_TIMING_LEGACY_VALUE_COUNT + 4] || 0,
+    correctiveStage2Ms: heapView[DEBUG_TIMING_LEGACY_VALUE_COUNT + 5] || 0,
+    skinningMs: heapView[DEBUG_TIMING_LEGACY_VALUE_COUNT + 6] || 0,
+    derivedMs: heapView[DEBUG_TIMING_LEGACY_VALUE_COUNT + 7] || 0,
+  };
+  const hasStageTimings = Object.values(stageTimings).some((value) => value !== 0);
   return {
     resetStateMs: heapView[0] || 0,
     parameterUploadMs: heapView[1] || 0,
@@ -80,6 +93,7 @@ function readDebugTiming(ptr, module) {
     verticesExportMs: heapView[3] || 0,
     skeletonExportMs: heapView[4] || 0,
     derivedExportMs: heapView[5] || 0,
+    stageTimings: hasStageTimings ? stageTimings : null,
   };
 }
 
@@ -299,6 +313,7 @@ export async function createMhrWasmRuntime() {
       const skeletonPtr = module._malloc(skeletonLength * 4);
       const derivedPtr = module._malloc(derivedLength * 4);
       const debugTimingPtr = module._malloc(DEBUG_TIMING_VALUE_COUNT * 4);
+      module.HEAPU8.fill(0, debugTimingPtr, debugTimingPtr + DEBUG_TIMING_VALUE_COUNT * 4);
       allocations.push(verticesPtr, skeletonPtr, derivedPtr, debugTimingPtr);
 
       const verticesExportStart = nowMs();

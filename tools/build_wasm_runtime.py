@@ -82,6 +82,8 @@ def main() -> int:
         str(native_dir / "src"),
         "-std=c++17",
         "-O3",
+        "-flto",
+        "-msimd128",
         "-sALLOW_MEMORY_GROWTH=1",
         "-sFILESYSTEM=0",
         "-sMODULARIZE=1",

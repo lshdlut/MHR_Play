@@ -210,16 +210,32 @@ export async function createBackend({ runtimeConfig = null, assetConfig = null }
     return cloneSnapshotView(lastSnapshot);
   }
 
+  function syncTraceFieldsIntoSnapshot(nextSnapshot, traceRef, patch) {
+    if (!patch || typeof patch !== 'object') {
+      return;
+    }
+    if (traceRef && typeof traceRef === 'object') {
+      traceRef.mainThread = {
+        ...(traceRef.mainThread || {}),
+        ...patch,
+      };
+    }
+    const snapshotTrace = nextSnapshot?.mhr?.evaluation?.debug?.debugTiming;
+    if (snapshotTrace && typeof snapshotTrace === 'object') {
+      snapshotTrace.mainThread = {
+        ...(snapshotTrace.mainThread || {}),
+        ...patch,
+      };
+    }
+  }
+
   function notify(traceRef = null) {
     const cloneStart = performance.now();
     const nextSnapshot = snapshot();
     const cloneEnd = performance.now();
-    if (traceRef && typeof traceRef === 'object') {
-      traceRef.mainThread = {
-        ...(traceRef.mainThread || {}),
-        snapshotCloneMs: cloneEnd - cloneStart,
-      };
-    }
+    syncTraceFieldsIntoSnapshot(nextSnapshot, traceRef, {
+      snapshotCloneMs: cloneEnd - cloneStart,
+    });
     const fanoutStart = performance.now();
     for (const fn of listeners) {
       fn(nextSnapshot);
@@ -234,9 +250,12 @@ export async function createBackend({ runtimeConfig = null, assetConfig = null }
     }
   }
 
-  function applyMutation(mutator, traceRef = null) {
+  function applyMutation(mutator, traceRef = null, beforeNotify = null) {
     const draft = createMutableSnapshot(lastSnapshot);
     mutator(draft);
+    if (typeof beforeNotify === 'function') {
+      beforeNotify(draft);
+    }
     lastSnapshot = draft;
     notify(traceRef);
     return lastSnapshot;
@@ -352,7 +371,14 @@ export async function createBackend({ runtimeConfig = null, assetConfig = null }
           nefc: faceCount,
           energy: Number(payload?.evaluation?.derived?.skeletonExtentY) || 0,
         };
-      }, traceRef);
+      }, traceRef, () => {
+        if (traceRef) {
+          traceRef.mainThread = {
+            ...(traceRef.mainThread || {}),
+            eventApplyBeforeNotifyMs: (performance.timeOrigin + performance.now()) - eventReceiveTs,
+          };
+        }
+      });
       if (traceRef) {
         traceRef.mainThread = {
           ...(traceRef.mainThread || {}),
@@ -362,6 +388,29 @@ export async function createBackend({ runtimeConfig = null, assetConfig = null }
       resolvePending('evaluation', snapshot());
     },
     influencePreview(payload) {
+      applyMutation((draft) => {
+        const previewRevision = Number(payload?.revision || 0);
+        const currentRevision = Number(draft?.mhr?.revision || 0);
+        if (previewRevision > 0 && currentRevision > 0 && previewRevision !== currentRevision) {
+          return;
+        }
+        if (!draft.mhr.evaluation || typeof draft.mhr.evaluation !== 'object') {
+          return;
+        }
+        draft.mhr.evaluation = {
+          ...draft.mhr.evaluation,
+          influencePreview: {
+            previewId: Number(payload?.previewId || 0),
+            parameterKey: String(payload?.parameterKey || ''),
+            stateSection: String(payload?.stateSection || ''),
+            revision: previewRevision,
+            vertexCount: Number(payload?.vertexCount || 0),
+            maxMagnitude: Number(payload?.maxMagnitude || 0),
+            appliedDelta: Number(payload?.appliedDelta || 0),
+            magnitudes: payload?.magnitudes || null,
+          },
+        };
+      });
       resolvePending('influencePreview', {
         previewId: Number(payload?.previewId || 0),
         parameterKey: String(payload?.parameterKey || ''),

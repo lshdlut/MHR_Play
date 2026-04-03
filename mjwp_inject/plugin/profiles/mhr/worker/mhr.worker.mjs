@@ -191,6 +191,10 @@ function mergePatchInto(target, patch) {
   return next;
 }
 
+function hasPatchValues(patch) {
+  return Object.values(patch || {}).some((section) => section && Object.keys(section).length > 0);
+}
+
 function buildParameterByKey(parameterMetadata) {
   const lookup = new Map();
   const parameters = Array.isArray(parameterMetadata?.parameters)
@@ -652,36 +656,45 @@ function scheduleInteractiveLoop() {
         runtime.interactive.rerun = false;
         const compareMode = runtime.interactive.compareMode || currentCompareMode('both');
         const debugTiming = runtime.interactive.debugTiming;
-        const revisionAtStart = runtime.revision;
+        const statePatch = runtime.interactive.accumulatedPatch;
+        const previewInfluenceRequest = runtime.interactive.previewInfluence;
+        runtime.interactive.accumulatedPatch = createEmptyPatch();
+        runtime.interactive.previewInfluence = null;
+        runtime.interactive.debugTiming = null;
+        if (!hasPatchValues(statePatch)) {
+          break;
+        }
         if (debugTiming) {
           const workerReceiveTs = nowTraceTs();
           debugTiming.worker = {
             ...(debugTiming.worker || {}),
             applyStateAndEvaluateReceivedTs: workerReceiveTs,
             setStateReceivedTs: workerReceiveTs,
-            evaluateReceivedTs: workerReceiveTs,
+          };
+        }
+        const mergeStart = performance.now();
+        mergeStatePatch(statePatch);
+        const mergeEnd = performance.now();
+        if (debugTiming) {
+          debugTiming.worker = {
+            ...(debugTiming.worker || {}),
+            mergeStatePatchMs: mergeEnd - mergeStart,
+            evaluateReceivedTs: nowTraceTs(),
           };
         }
         const { result } = evaluateCurrentState(compareMode, debugTiming);
-        if (runtime.interactive.rerun || runtime.revision !== revisionAtStart) {
-          continue;
-        }
-        const appliedPatch = runtime.interactive.accumulatedPatch;
         const influencePreview = buildInfluencePreviewPayload(
-          runtime.interactive.previewInfluence,
+          previewInfluenceRequest,
           result,
         );
-        runtime.interactive.accumulatedPatch = createEmptyPatch();
-        runtime.interactive.previewInfluence = null;
-        postEvaluation(compareMode, result, debugTiming, appliedPatch, influencePreview);
-        runtime.interactive.debugTiming = null;
-        if (!runtime.interactive.rerun) {
+        postEvaluation(compareMode, result, debugTiming, statePatch, influencePreview);
+        if (!runtime.interactive.rerun && !hasPatchValues(runtime.interactive.accumulatedPatch)) {
           break;
         }
       }
     } finally {
       runtime.interactive.active = false;
-      if (runtime.interactive.rerun) {
+      if (runtime.interactive.rerun || hasPatchValues(runtime.interactive.accumulatedPatch)) {
         scheduleInteractiveLoop();
       }
     }
@@ -820,9 +833,6 @@ const handlers = {
     const debugTiming = cloneDebugTiming(payload?.__debugTiming);
     const workerReceiveTs = nowTraceTs();
     const statePatch = stripDebugPatch(payload.statePatch || {});
-    const mergeStart = performance.now();
-    mergeStatePatch(statePatch);
-    const mergeEnd = performance.now();
     const interactive = payload?.interactive === true;
     if (interactive) {
       runtime.interactive.compareMode = compareMode;
@@ -834,12 +844,14 @@ const handlers = {
           ...(debugTiming.worker || {}),
           applyStateAndEvaluateReceivedTs: workerReceiveTs,
           setStateReceivedTs: workerReceiveTs,
-          mergeStatePatchMs: mergeEnd - mergeStart,
         };
       }
       scheduleInteractiveLoop();
       return;
     }
+    const mergeStart = performance.now();
+    mergeStatePatch(statePatch);
+    const mergeEnd = performance.now();
     if (debugTiming) {
       debugTiming.worker = {
         ...(debugTiming.worker || {}),

@@ -278,6 +278,14 @@ export async function createMhrService({ runtimeConfig = null, assetConfig = nul
     });
   }
 
+  async function previewInfluence(request = null) {
+    if (disposed) {
+      throw new Error('mhr service is disposed');
+    }
+    await readyPromise;
+    return backend.previewInfluence(request || {});
+  }
+
   function snapshot() {
     return backend.snapshot();
   }
@@ -310,6 +318,7 @@ export async function createMhrService({ runtimeConfig = null, assetConfig = nul
     snapshot,
     subscribe,
     applyPatch,
+    previewInfluence,
     loadAssets,
     hasPendingCommit,
     ready: () => readyPromise,

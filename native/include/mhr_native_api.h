@@ -56,6 +56,14 @@ typedef struct MhrRuntimeDebugTiming {
   float vertices_export_ms;
   float skeleton_export_ms;
   float derived_export_ms;
+  float parameter_decode_ms;
+  float joint_world_transforms_ms;
+  float surface_morph_ms;
+  float pose_features_ms;
+  float corrective_stage1_ms;
+  float corrective_stage2_ms;
+  float skinning_ms;
+  float derived_stage_ms;
 } MhrRuntimeDebugTiming;
 
 typedef struct MhrRuntime MhrRuntime;

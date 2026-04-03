@@ -6,7 +6,7 @@ param(
     [string]$PlayRef = "",
 
     [Parameter(Mandatory = $false)]
-    [string]$WorkDir = (Join-Path ([System.IO.Path]::GetTempPath()) "mhr_mjwp_inject"),
+    [string]$WorkDir = (Join-Path ([System.IO.Path]::GetTempPath()) "mhr_mjwp_inject_main"),
 
     [Parameter(Mandatory = $false)]
     [int]$Port = 4173,
@@ -173,23 +173,55 @@ function Read-InjectMeta([string]$MetaPath) {
     }
 }
 
+function Normalize-InjectWorkDir([string]$PathLike) {
+    if (-not $PathLike) {
+        return ""
+    }
+    $candidate = $PathLike.Trim().Trim('"')
+    if (-not $candidate) {
+        return ""
+    }
+    if (Test-Path -LiteralPath $candidate) {
+        $candidate = (Resolve-Path -LiteralPath $candidate).Path
+    }
+    $current = $candidate.TrimEnd('\', '/')
+    while ($current) {
+        $leaf = Split-Path -Leaf $current
+        if ($leaf -like 'mhr_mjwp_inject*') {
+            return $current
+        }
+        $parent = Split-Path -Parent $current
+        if (-not $parent -or $parent -eq $current) {
+            break
+        }
+        $current = $parent
+    }
+    return $candidate.TrimEnd('\', '/')
+}
+
 function Get-ActiveInjectWorkDirs() {
     $activeDirs = @()
-    $tempRoot = Get-TempRoot
-    $pattern = '(?i)' + [regex]::Escape($tempRoot + '\') + 'mhr_mjwp_inject[^" ]*'
-
     foreach ($process in (Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
-        $commandLine = $process.CommandLine
-        if (-not $commandLine) {
+        if ($process.ProcessId -eq $PID) {
             continue
         }
-        foreach ($match in [regex]::Matches($commandLine, $pattern)) {
-            $candidate = $match.Value
-            if (Test-Path -LiteralPath $candidate -PathType Container) {
-                $resolved = (Resolve-Path -LiteralPath $candidate).Path
-                if ($resolved -and -not ($activeDirs -contains $resolved)) {
-                    $activeDirs += $resolved
-                }
+        if ($process.Name -notmatch '^python(?:w)?\.exe$') {
+            continue
+        }
+        $commandLine = $process.CommandLine
+        if (-not $commandLine -or $commandLine -notmatch 'mjwp_inject\\server\.py') {
+            continue
+        }
+        $rootMatch = [regex]::Match($commandLine, '(?i)--root\s+("([^"]+)"|([^\s"]+))')
+        if (-not $rootMatch.Success) {
+            continue
+        }
+        $rootArg = if ($rootMatch.Groups[2].Success) { $rootMatch.Groups[2].Value } else { $rootMatch.Groups[3].Value }
+        $candidate = Normalize-InjectWorkDir $rootArg
+        if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Container)) {
+            $resolved = (Resolve-Path -LiteralPath $candidate).Path
+            if ($resolved -and -not ($activeDirs -contains $resolved)) {
+                $activeDirs += $resolved
             }
         }
     }
@@ -205,7 +237,10 @@ function Prune-TempInjectWorkDirs([string]$CurrentWorkDir) {
         return
     }
 
-    $defaultWorkDir = Join-Path $tempRoot 'mhr_mjwp_inject'
+    $defaultWorkDirs = @(
+        (Join-Path $tempRoot 'mhr_mjwp_inject_main'),
+        (Join-Path $tempRoot 'mhr_mjwp_inject')
+    )
     $activeDirs = Get-ActiveInjectWorkDirs
     $allDirs = @(Get-ChildItem -LiteralPath $tempRoot -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'mhr_mjwp_inject*' })
     $removed = 0
@@ -215,14 +250,18 @@ function Prune-TempInjectWorkDirs([string]$CurrentWorkDir) {
         if ($resolvedDir -eq $CurrentWorkDir) {
             continue
         }
-        if ($resolvedDir -eq $defaultWorkDir) {
+        if ($defaultWorkDirs -contains $resolvedDir) {
             continue
         }
         if ($activeDirs -contains $resolvedDir) {
             continue
         }
-        Remove-Item -LiteralPath $resolvedDir -Recurse -Force
-        $removed += 1
+        try {
+            Remove-Item -LiteralPath $resolvedDir -Recurse -Force -ErrorAction Stop
+            $removed += 1
+        } catch {
+            Write-Warning "[mjwp_inject] failed to prune stale temp work dir: $resolvedDir"
+        }
     }
 
     if ($removed -gt 0) {
@@ -259,9 +298,13 @@ foreach ($supportedLod in 0..6) {
 }
 
 Prune-TempInjectWorkDirs -CurrentWorkDir $workDirAbs
+$activeInjectWorkDirs = Get-ActiveInjectWorkDirs
 
 $needFreshClone = $Clean.IsPresent -or (-not (Test-Path -LiteralPath (Join-Path $playClone ".git")))
 if ($needFreshClone -and (Test-Path -LiteralPath $playClone)) {
+    if ($activeInjectWorkDirs -contains $workDirAbs) {
+        throw "WorkDir is currently in use by an active mjwp_inject server: $workDirAbs. Stop that server or choose a different -WorkDir."
+    }
     Write-Host "[mjwp_inject] removing existing play clone -> $playClone"
     Remove-Item -LiteralPath $playClone -Recurse -Force
 }
