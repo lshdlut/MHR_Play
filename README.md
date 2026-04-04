@@ -22,13 +22,9 @@ MHR Play is a public-facing interactive MHR experience built on top of `mujoco-w
 
 ## Gallery
 
-| Main | Skin / Skeleton / Labels | Influence Preview |
+| Influence Preview | Skin / Skeleton / Joint Axes / Labels | Skeleton View |
 |---|---|---|
-| ![Main view](assets/main.png) | ![Skin and skeleton overlays](assets/skin_skel_axes_label.png) | ![Influence heatmap](assets/influence_heatmap.png) |
-
-Additional view:
-
-![Skeleton view](assets/skel.png)
+| <img src="assets/influence_heatmap.png" alt="Influence heatmap" height="320" /> | <img src="assets/skin_skel_axes_label.png" alt="Skin, skeleton, joint axes, and labels" height="320" /> | <img src="assets/skel.png" alt="Skeleton view" height="320" /> |
 
 ## Quickstart
 
@@ -55,12 +51,3 @@ http://127.0.0.1:4269/mhr.html?lod=1
 - `tools/`: preprocessing, build, bench, smoke, and repository guardrails
 - `tests/`: tooling, contract, and smoke regression coverage
 - `native/`: portable runtime core and C ABI
-
-## Notes
-
-- `mjwp_inject/site/mhr.html` is the only interactive product surface in this repo.
-- The old standalone/embed product shell is intentionally removed.
-- Internal research notes and historical contract writeups are now local-only archive material and are no longer part of the public documentation set.
-- Official reference names used in this repo:
-  - `official full-package CPU route` (`official-full-cpu`)
-  - `official TorchScript model route` (`official-torchscript`, `lod=1` only)

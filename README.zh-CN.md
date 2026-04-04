@@ -22,13 +22,9 @@ MHR Play 是一个面向公众展示的交互式 MHR 体验页：它把官方 MH
 
 ## 展示
 
-| Main | Skin / Skeleton / Labels | Influence Preview |
+| Influence Preview | Skin / Skeleton / Joint Axes / Labels | Skeleton View |
 |---|---|---|
-| ![Main view](assets/main.png) | ![Skin and skeleton overlays](assets/skin_skel_axes_label.png) | ![Influence heatmap](assets/influence_heatmap.png) |
-
-额外视图：
-
-![Skeleton view](assets/skel.png)
+| <img src="assets/influence_heatmap.png" alt="Influence heatmap" height="320" /> | <img src="assets/skin_skel_axes_label.png" alt="Skin, skeleton, joint axes, and labels" height="320" /> | <img src="assets/skel.png" alt="Skeleton view" height="320" /> |
 
 ## 快速开始
 
@@ -55,12 +51,3 @@ http://127.0.0.1:4269/mhr.html?lod=1
 - `tools/`: 预处理、构建、bench、smoke、仓库约束检查
 - `tests/`: tooling / contract / smoke 回归
 - `native/`: portable runtime core 与 C ABI
-
-## 说明
-
-- 当前唯一交互产品面是 `mjwp_inject/site/mhr.html`。
-- 仓库不再保留旧 standalone/embed 页面。
-- 内部研究型设计稿和历史合同文档已下放到本地归档区，不再作为公开仓库文档的一部分。
-- 仓库里使用的官方参考路线命名：
-  - `official full-package CPU route`（`official-full-cpu`）
-  - `official TorchScript model route`（`official-torchscript`，仅 `lod=1`）

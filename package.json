@@ -8,17 +8,13 @@
   "scripts": {
     "play:dev": "powershell -ExecutionPolicy Bypass -File .\\mjwp_inject\\run.ps1 -PlaySrc ..\\mujoco-wasm-play -Lod 1",
     "generate:protocol": "python tools/run_node.py tools/generate_worker_protocol.mjs",
-    "ci:guard": "python tools/run_node.py tools/check_module_boundaries.mjs && python tools/run_node.py tools/check_repo_hygiene.mjs",
-    "test": "python tools/run_node.py --test tests/tooling/repo_contracts.test.mjs tests/tooling/runtime_config.test.mjs tests/tooling/asset_bundle_loader.test.mjs tests/tooling/asset_preprocess.test.mjs",
+    "test": "python tools/run_node.py --test tests/tooling/runtime_config.test.mjs tests/tooling/asset_bundle_loader.test.mjs tests/tooling/asset_preprocess.test.mjs tests/tooling/runtime_ir_compile.test.mjs",
     "build:native": "python tools/build_native.py --print-lib",
     "build:wasm": "python tools/build_wasm_runtime.py",
     "test:official-assets": "python tools/run_node.py --test tests/tooling/official_reference_smoke.test.mjs",
-    "test:native-smoke": "python tools/run_node.py --test tests/tooling/native_reference_smoke.test.mjs",
     "test:play-smoke": "python tools/mjwp_inject_smoke.py http://127.0.0.1:4173 --lod 1",
     "preprocess:official": "python tools/run_python.py tools/mhr_asset_preprocess.py --source-kind official --lod 1 --out local_tools/official_bundle/lod1",
     "parity:python": "python tools/run_python.py tools/mhr_python_oracle.py --lod 1 --oracle official-full-cpu --out local_tools/mhr_parity/ref_py/lod1",
-    "parity:native": "python tools/run_python.py tools/mhr_native_harness.py --manifest local_tools/official_bundle/lod1/manifest.json --oracle-root local_tools/mhr_parity/ref_py/lod1 --out local_tools/mhr_parity/ref_native/lod1 --rebuild",
-    "parity:portable": "python tools/run_python.py tools/mhr_runtime_ir_portable_parity.py --manifest local_tools/official_bundle/lod1/manifest.json --oracle-root local_tools/mhr_parity/ref_py/lod1",
-    "bench:native": "python tools/run_python.py tools/mhr_runtime_compare_bench.py --manifest local_tools/official_bundle/lod1/manifest.json"
+    "parity:portable": "python tools/run_python.py tools/mhr_runtime_ir_portable_parity.py --manifest local_tools/official_bundle/lod1/manifest.json --oracle-root local_tools/mhr_parity/ref_py/lod1"
   }
 }
