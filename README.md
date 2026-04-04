@@ -6,11 +6,14 @@ English | [简体中文](README.zh-CN.md)
 
 MHR Play is a public-facing interactive MHR experience built on top of `mujoco-wasm-play`. It combines official MHR assets, an optimized WASM runtime, and a Play-style Three.js viewer into a single browser product surface.
 
+- Live demo: `https://lshdlut.github.io/MHR_Play/`
+- Direct viewer: `https://lshdlut.github.io/MHR_Play/viewer/?lod=1`
+
 ## Highlights
 
 - **Full official MHR asset path**: the page loads the full official runtime IR instead of a simplified demo mesh.
 - **Play-style browser UI**: panels, HUD, camera controls, and scene interaction are hosted by `mujoco-wasm-play`.
-- **Multi-LoD support**: the same runtime surface supports `lod0..lod6` and can switch LoD in-page.
+- **Multi-LoD support**: the local/runtime surface supports `lod0..lod6`; the public GitHub Pages build ships the embeddable `lod1` viewer.
 - **Rich debugging overlays**: skeleton, joint labels, local axes, and influence-preview heatmaps are available in the viewer.
 - **Performance-oriented runtime**: the heavy-family WASM core has been optimized specifically for interactive `blend` / `expression` workloads.
 
@@ -28,11 +31,17 @@ MHR Play is a public-facing interactive MHR experience built on top of `mujoco-w
 
 ## Quickstart
 
-- Start the local page from the repository root:
+- Public viewer:
+
+```text
+https://lshdlut.github.io/MHR_Play/
+```
+
+- Start the local page from the repository root with your own Play checkout:
 
 ```powershell
 $env:PYTHON_EXE='<python>'
-powershell -NoProfile -ExecutionPolicy Bypass -File .\mjwp_inject\run.ps1 -PlaySrc ..\mujoco-wasm-play -Port 4269 -Lod 1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\mjwp_inject\run.ps1 -PlaySrc <path-to-mujoco-wasm-play> -Port 4269 -Lod 1
 ```
 
 - Open:
@@ -48,6 +57,7 @@ http://127.0.0.1:4269/mhr.html?lod=1
 
 - `mjwp_inject/`: downstream Play assembly, MHR profile/plugin, public page entry
 - `assets/`: screenshots used for public-facing presentation
+- `public_assets/`: tracked public viewer assets used by the GitHub Pages build
 - `tools/`: preprocessing, build, bench, smoke, and repository guardrails
 - `tests/`: tooling, contract, and smoke regression coverage
 - `native/`: portable runtime core and C ABI

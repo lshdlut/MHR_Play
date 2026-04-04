@@ -33,7 +33,7 @@ const SKELETON_AXIS_RADIUS_RAW = 0.44;
 const BLEND_BODY_REGION_END = 19;
 const BLEND_FACE_REGION_END = 39;
 const BLEND_HAND_REGION_END = 44;
-const SUPPORTED_LODS = Object.freeze([0, 1, 2, 3, 4, 5, 6]);
+const DEFAULT_SUPPORTED_LODS = Object.freeze([0, 1, 2, 3, 4, 5, 6]);
 const JOINT_LABEL_FONT_PX = 10;
 const JOINT_LABEL_FONT = `${JOINT_LABEL_FONT_PX}px "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
 const JOINT_LABEL_TEXT_COLOR = 'rgba(255, 255, 255, 0.96)';
@@ -88,6 +88,22 @@ const tempMeshColor = new THREE.Color();
 const PERF_HUD_STALE_MS = 2000;
 const PERF_HUD_WINDOW_MS = 1000;
 const PERF_HUD_MAX_SAMPLES = 240;
+
+function resolveSupportedLods(target = globalThis) {
+  const raw = target?.PLAY_MHR_SUPPORTED_LODS;
+  if (!Array.isArray(raw)) {
+    return DEFAULT_SUPPORTED_LODS;
+  }
+  const normalized = [];
+  for (const value of raw) {
+    const numeric = Number(value);
+    if (!Number.isInteger(numeric) || numeric < 0 || normalized.includes(numeric)) {
+      continue;
+    }
+    normalized.push(numeric);
+  }
+  return normalized.length ? Object.freeze(normalized) : DEFAULT_SUPPORTED_LODS;
+}
 
 function prunePerfHudSamples(samples, nowMs) {
   if (!Array.isArray(samples) || samples.length === 0) {
@@ -184,11 +200,13 @@ function deriveLodPath(rawUrl, lod, { expectManifest = false } = {}) {
     ? url.pathname.replace(/\/lod\d+\/manifest\.json$/i, `/lod${lod}/manifest.json`)
     : url.pathname.replace(/\/lod\d+\/?$/i, `/lod${lod}/`);
   if (nextPath === url.pathname) {
-    if (expectManifest) {
-      url.pathname = `/mhr-official/lod${lod}/manifest.json`;
-    } else {
-      url.pathname = `/mhr-official/lod${lod}/`;
-    }
+    const fallback = expectManifest
+      ? `mhr-official/lod${lod}/manifest.json`
+      : `mhr-official/lod${lod}/`;
+    const baseHref = url.pathname.endsWith('/')
+      ? url.href
+      : new URL('./', url.href).href;
+    return new URL(fallback, baseHref).href;
   } else {
     url.pathname = nextPath;
   }
@@ -1048,6 +1066,7 @@ function writeSkeletonAxes(sceneState, skeletonStates, visible) {
 }
 
 export async function registerPlayPlugin(host) {
+  const supportedLods = resolveSupportedLods(globalThis);
   if (!host?.ui?.sections?.register || !host?.renderer?.overlay3d?.createScope) {
     throw new Error('mhr_profile_plugin requires Play ui.sections.register and renderer.overlay3d.');
   }
@@ -1338,7 +1357,7 @@ export async function registerPlayPlugin(host) {
     }
     const baseAssetConfig = getCurrentAssetConfig();
     controlRefs.lodMetadataPromise = (async () => {
-      for (const lod of SUPPORTED_LODS) {
+      for (const lod of supportedLods) {
         const manifest = await loadRuntimeIrManifest(buildLodAssetConfig(baseAssetConfig, lod), {
           fetchImpl: globalThis.fetch?.bind(globalThis),
         });
@@ -2638,7 +2657,7 @@ export async function registerPlayPlugin(host) {
     row.setAttribute('data-testid', 'mhr-lod-row');
     const select = kit.select({
       value: String(currentLod()),
-      options: SUPPORTED_LODS.map((lod) => ({
+      options: supportedLods.map((lod) => ({
         value: String(lod),
         label: formatLodOptionLabel(lod, null),
       })),

@@ -1,0 +1,15 @@
+{
+  "play": {
+    "repo": "https://github.com/lshdlut/mujoco-wasm-play.git",
+    "ref": "0193b54e5b072d21d99c2ab8f7bfa77a2a9d7a70",
+    "ver": "3.5.0"
+  },
+  "forge": {
+    "baseTemplate": "https://cdn.jsdelivr.net/gh/lshdlut/mujoco-wasm-forge@c7d49505b40cff7b113c4f1a5554676bdcfdbd84/dist/{ver}/"
+  },
+  "pages": {
+    "viewerPath": "viewer",
+    "defaultLod": 1,
+    "supportedLods": [1]
+  }
+}

@@ -6,11 +6,14 @@
 
 MHR Play 是一个面向公众展示的交互式 MHR 体验页：它把官方 MHR 资产、优化后的 WASM runtime，以及 `mujoco-wasm-play` 的 Three.js 界面整合到同一条浏览器产品线上。
 
+- 在线演示：`https://lshdlut.github.io/MHR_Play/`
+- 直接 viewer：`https://lshdlut.github.io/MHR_Play/viewer/?lod=1`
+
 ## 亮点
 
 - **完整官方 MHR 资产链**：页面直接加载 full official runtime IR，而不是简化 demo 模型。
 - **Play 风格的交互界面**：沿用 `mujoco-wasm-play` 的面板、视图控制、HUD 和 Three.js 场景。
-- **多 LoD 支持**：同一条产品线支持 `lod0..lod6`，可在页面内切换。
+- **多 LoD 支持**：本地/runtime 主线支持 `lod0..lod6`；公开 GitHub Pages 版本提供可嵌入的 `lod1` viewer。
 - **可视化调试能力**：支持 skeleton、joint labels、local axes、influence preview heatmap 等表达。
 - **性能导向的浏览器 runtime**：heavy family 的 core 已针对 WASM 路线做过专项优化。
 
@@ -28,11 +31,17 @@ MHR Play 是一个面向公众展示的交互式 MHR 体验页：它把官方 MH
 
 ## 快速开始
 
-- 在仓库根目录启动本地页面：
+- 在线 viewer：
+
+```text
+https://lshdlut.github.io/MHR_Play/
+```
+
+- 在仓库根目录用你自己的 Play checkout 启动本地页面：
 
 ```powershell
 $env:PYTHON_EXE='<python>'
-powershell -NoProfile -ExecutionPolicy Bypass -File .\mjwp_inject\run.ps1 -PlaySrc ..\mujoco-wasm-play -Port 4269 -Lod 1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\mjwp_inject\run.ps1 -PlaySrc <path-to-mujoco-wasm-play> -Port 4269 -Lod 1
 ```
 
 - 打开：
@@ -48,6 +57,7 @@ http://127.0.0.1:4269/mhr.html?lod=1
 
 - `mjwp_inject/`: Play 下游装配层、MHR profile/plugin、页面入口
 - `assets/`: README 与公开展示使用的截图素材
+- `public_assets/`: GitHub Pages 公共 viewer 使用的跟踪资产
 - `tools/`: 预处理、构建、bench、smoke、仓库约束检查
 - `tests/`: tooling / contract / smoke 回归
 - `native/`: portable runtime core 与 C ABI
