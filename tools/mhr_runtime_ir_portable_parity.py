@@ -24,6 +24,12 @@ from mhr_runtime_compare_bench import (
 )
 from mhr_runtime_ir_compile import compile_runtime_ir
 
+MHR_FORWARD_EXACT_SURFACE_MORPH = 1 << 1
+MHR_FORWARD_EXACT_LINEAR_ALGEBRA = 1 << 2
+MHR_FORWARD_EXACT_PARITY = (
+    MHR_FORWARD_EXACT_SURFACE_MORPH | MHR_FORWARD_EXACT_LINEAR_ALGEBRA
+)
+
 
 def compare_arrays(reference: np.ndarray, candidate: np.ndarray) -> dict[str, float]:
     diff = reference.astype(np.float64) - candidate.astype(np.float64)
@@ -159,6 +165,8 @@ def evaluate_portable(
     data: ctypes.c_void_p,
     counts: MhrModelCounts,
     raw_inputs: dict[str, np.ndarray],
+    *,
+    forward_flags: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     model_parameters = np.ascontiguousarray(raw_inputs["model_parameters"].reshape(-1), dtype=np.float32)
     identity = np.ascontiguousarray(raw_inputs["identity"].reshape(-1), dtype=np.float32)
@@ -194,7 +202,7 @@ def evaluate_portable(
         "mhr_data_set_expression",
         lib.mhr_data_last_error(data),
     )
-    check_ok(lib.mhr_forward(model, data, 0), "mhr_forward", lib.mhr_data_last_error(data))
+    check_ok(lib.mhr_forward(model, data, int(forward_flags)), "mhr_forward", lib.mhr_data_last_error(data))
 
     vertices = np.zeros((counts.vertex_count * 3,), dtype=np.float32)
     skeleton = np.zeros((counts.joint_count * 8,), dtype=np.float32)
@@ -240,6 +248,11 @@ def main() -> int:
     parser.add_argument("--build-dir", help="native build dir")
     parser.add_argument("--config", default="Release")
     parser.add_argument("--zero-epsilon", type=float, default=0.0)
+    parser.add_argument(
+        "--exact",
+        action="store_true",
+        help="Use the portable exact lane: exact linear algebra, dense corrective IR, and exact surface morph.",
+    )
     args = parser.parse_args()
 
     repo_root = repo_root_from_here(__file__)
@@ -259,6 +272,7 @@ def main() -> int:
             manifest_path=processed_manifest,
             out_dir=runtime_ir_dir,
             zero_epsilon=args.zero_epsilon,
+            include_dense_corrective=bool(args.exact),
             verify_roundtrip=True,
         )
 
@@ -314,6 +328,7 @@ def main() -> int:
                     portable_data,
                     portable_counts,
                     raw_inputs,
+                    forward_flags=MHR_FORWARD_EXACT_PARITY if args.exact else 0,
                 )
                 if oracle_root is None:
                     legacy_vertices, legacy_skeleton, legacy_derived = evaluate_legacy(
@@ -356,6 +371,7 @@ def main() -> int:
                         "manifest": str(processed_manifest),
                         "bundleId": processed_payload.get("bundleId"),
                         "lod": lod,
+                        "exactMode": bool(args.exact),
                         "comparisonMode": "official-oracle" if oracle_root is not None else "legacy-runtime",
                         "oracleRoot": str(oracle_root) if oracle_root is not None else None,
                         "cases": report_cases,

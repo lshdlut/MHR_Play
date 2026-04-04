@@ -563,12 +563,18 @@ def main() -> None:
         action="store_true",
         help="Reconstruct sparse-compiled arrays and verify exact roundtrip.",
     )
+    parser.add_argument(
+        "--include-dense-corrective",
+        action="store_true",
+        help="Also emit correctiveDenseFull for exact parity/debug lanes.",
+    )
     args = parser.parse_args()
 
     manifest = compile_runtime_ir(
         manifest_path=Path(args.manifest).resolve(),
         out_dir=Path(args.out).resolve(),
         zero_epsilon=float(args.zero_epsilon),
+        include_dense_corrective=bool(args.include_dense_corrective),
         verify_roundtrip=bool(args.verify_roundtrip),
     )
     print(

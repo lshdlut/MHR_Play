@@ -155,8 +155,10 @@ struct CompiledModel final {
   SparseRowMatrix parameter_transform;
   SparseRowMatrix pose_corrective_stage1;
   SparseColumnMatrix pose_corrective_stage2;
-  DenseMatrix parameter_transform_dense;
-  DenseMatrix pose_corrective_stage1_dense;
+  mutable DenseMatrix parameter_transform_dense;
+  mutable DenseMatrix pose_corrective_stage1_dense;
+  mutable std::once_flag parameter_transform_dense_once;
+  mutable std::once_flag pose_corrective_stage1_dense_once;
   MhrModelCounts counts{};
   MhrPoseBlockLayout pose_layout{0, 6, 24};
   std::string last_error;
@@ -290,6 +292,26 @@ void accumulate_active_basis_terms(
     for (size_t offset = 0; offset < target->size(); ++offset) {
       out[offset] += basis[offset] * coefficient;
     }
+  }
+}
+
+void compose_surface_morph_exact(
+    const float* base_mesh,
+    const std::vector<ActiveBasisTerm>& active_identity,
+    const std::vector<ActiveBasisTerm>& active_expression,
+    std::vector<float>* target) {
+  if (base_mesh == nullptr || target == nullptr) {
+    return;
+  }
+  for (size_t offset = 0; offset < target->size(); ++offset) {
+    float delta = 0.0f;
+    for (const ActiveBasisTerm& term : active_identity) {
+      delta += term.basis[offset] * term.coefficient;
+    }
+    for (const ActiveBasisTerm& term : active_expression) {
+      delta += term.basis[offset] * term.coefficient;
+    }
+    (*target)[offset] = base_mesh[offset] + delta;
   }
 }
 
@@ -919,6 +941,20 @@ DenseMatrix csr_to_dense(const SparseRowMatrix& matrix) {
   return dense;
 }
 
+const DenseMatrix& parameter_transform_dense_matrix(const CompiledModel& model) {
+  std::call_once(model.parameter_transform_dense_once, [&model]() {
+    model.parameter_transform_dense = csr_to_dense(model.parameter_transform);
+  });
+  return model.parameter_transform_dense;
+}
+
+const DenseMatrix& pose_corrective_stage1_dense_matrix(const CompiledModel& model) {
+  std::call_once(model.pose_corrective_stage1_dense_once, [&model]() {
+    model.pose_corrective_stage1_dense = csr_to_dense(model.pose_corrective_stage1);
+  });
+  return model.pose_corrective_stage1_dense;
+}
+
 bool validate_bundle(CompiledModel* model, const MhrBundleView& bundle_view) {
   if (bundle_view.version != 1) {
     return set_error(&model->last_error, "Unsupported bundle view version.");
@@ -1229,7 +1265,6 @@ bool compile_model(CompiledModel* model, const MhrBundleView& bundle_view) {
       model->parameter_transform.col_index.data(),
       static_cast<uint32_t>(parameter_transform_row_ptr.shape[0] - 1U),
       model->counts.parameter_input_count);
-  model->parameter_transform_dense = csr_to_dense(model->parameter_transform);
 
   model->pose_corrective_stage1.row_ptr.assign(
       array_data<uint32_t>(pose_hidden_row_ptr),
@@ -1245,7 +1280,6 @@ bool compile_model(CompiledModel* model, const MhrBundleView& bundle_view) {
       model->pose_corrective_stage1.col_index.data(),
       model->counts.hidden_count,
       model->counts.pose_feature_count);
-  model->pose_corrective_stage1_dense = csr_to_dense(model->pose_corrective_stage1);
 
   model->pose_corrective_stage2.col_ptr.assign(
       array_data<uint32_t>(corrective_col_ptr),
@@ -1515,6 +1549,7 @@ int mhr_forward(const MhrModel* model, MhrData* data, uint32_t flags) {
   const MhrModelCounts& counts = compiled.counts;
   const auto evaluate_start = SteadyClock::now();
   const bool skip_derived = (flags & MHR_FORWARD_SKIP_DERIVED) != 0U;
+  const bool exact_linear_algebra = (flags & MHR_FORWARD_EXACT_LINEAR_ALGEBRA) != 0U;
 
   impl.timing = {};
 
@@ -1552,11 +1587,12 @@ int mhr_forward(const MhrModel* model, MhrData* data, uint32_t flags) {
 
     bool used_exact_parameter_decode = false;
 #ifdef _WIN32
-    if (!compiled.parameter_transform_dense.values.empty()) {
+    if (exact_linear_algebra) {
+      const DenseMatrix& parameter_transform_dense = parameter_transform_dense_matrix(compiled);
       used_exact_parameter_decode = exact_sgemv(
-          static_cast<int>(compiled.parameter_transform_dense.rows),
-          static_cast<int>(compiled.parameter_transform_dense.columns),
-          compiled.parameter_transform_dense.values.data(),
+          static_cast<int>(parameter_transform_dense.rows),
+          static_cast<int>(parameter_transform_dense.columns),
+          parameter_transform_dense.values.data(),
           impl.parameter_inputs.data(),
           impl.joint_parameters.data());
     }
@@ -1635,10 +1671,6 @@ int mhr_forward(const MhrModel* model, MhrData* data, uint32_t flags) {
   const size_t vertex_value_count = static_cast<size_t>(counts.vertex_count) * 3U;
   if (surface_morph_dirty) {
     const auto stage_start = SteadyClock::now();
-    std::copy(
-        compiled.base_mesh,
-        compiled.base_mesh + vertex_value_count,
-        impl.rest_vertices_pre_corrective.begin());
     const std::vector<ActiveBasisTerm> active_identity = build_active_basis_terms(
         compiled.identity_basis,
         impl.identity,
@@ -1647,8 +1679,11 @@ int mhr_forward(const MhrModel* model, MhrData* data, uint32_t flags) {
         compiled.expression_basis,
         impl.expression,
         vertex_value_count);
-    accumulate_active_basis_terms(&impl.rest_vertices_pre_corrective, active_identity);
-    accumulate_active_basis_terms(&impl.rest_vertices_pre_corrective, active_expression);
+    compose_surface_morph_exact(
+        compiled.base_mesh,
+        active_identity,
+        active_expression,
+        &impl.rest_vertices_pre_corrective);
     impl.timing.surface_morph_ms = elapsed_ms(stage_start, SteadyClock::now());
   }
 
@@ -1734,11 +1769,13 @@ int mhr_forward(const MhrModel* model, MhrData* data, uint32_t flags) {
     if (run_full_stage1) {
       bool used_exact_stage1 = false;
 #ifdef _WIN32
-      if (!compiled.pose_corrective_stage1_dense.values.empty()) {
+      if (exact_linear_algebra) {
+        const DenseMatrix& pose_corrective_stage1_dense =
+            pose_corrective_stage1_dense_matrix(compiled);
         used_exact_stage1 = exact_sgemv(
-            static_cast<int>(compiled.pose_corrective_stage1_dense.rows),
-            static_cast<int>(compiled.pose_corrective_stage1_dense.columns),
-            compiled.pose_corrective_stage1_dense.values.data(),
+            static_cast<int>(pose_corrective_stage1_dense.rows),
+            static_cast<int>(pose_corrective_stage1_dense.columns),
+            pose_corrective_stage1_dense.values.data(),
             impl.pose_features.data(),
             impl.hidden.data());
       }
@@ -1791,7 +1828,7 @@ int mhr_forward(const MhrModel* model, MhrData* data, uint32_t flags) {
       corrective_delta_changed = true;
       bool used_exact_stage2 = false;
 #ifdef _WIN32
-      if (compiled.pose_corrective_stage2_dense != nullptr) {
+      if (exact_linear_algebra && compiled.pose_corrective_stage2_dense != nullptr) {
         used_exact_stage2 = exact_sgemv(
             static_cast<int>(counts.vertex_count * 3U),
             static_cast<int>(counts.hidden_count),
@@ -1832,7 +1869,7 @@ int mhr_forward(const MhrModel* model, MhrData* data, uint32_t flags) {
           corrective_delta_changed = true;
           bool used_exact_stage2 = false;
 #ifdef _WIN32
-          if (compiled.pose_corrective_stage2_dense != nullptr) {
+          if (exact_linear_algebra && compiled.pose_corrective_stage2_dense != nullptr) {
             used_exact_stage2 = exact_sgemv(
                 static_cast<int>(counts.vertex_count * 3U),
                 static_cast<int>(counts.hidden_count),

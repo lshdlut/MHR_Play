@@ -111,12 +111,33 @@ def _extract_parameter_limits(model) -> np.ndarray:
     raise AttributeError("Unable to extract parameter limits from official model.")
 
 
+def _extract_torchscript_parameter_transform_width(model) -> int | None:
+    character_torch = getattr(model, "character_torch", None)
+    if character_torch is None:
+        return None
+    parameter_transform = getattr(character_torch, "parameter_transform", None)
+    if parameter_transform is None or not hasattr(parameter_transform, "named_buffers"):
+        return None
+    for name, value in parameter_transform.named_buffers():
+        if name == "parameter_transform":
+            shape = tuple(int(dim) for dim in value.shape)
+            if len(shape) == 2:
+                return int(shape[1])
+    return None
+
+
 def build_parameter_metadata(model, *, oracle_kind: str = OFFICIAL_ORACLE_KIND) -> dict[str, Any]:
     parameter_names = _extract_parameter_names(model)
     parameter_limits = _extract_parameter_limits(model)
     identity_count = int(model.get_num_identity_blendshapes())
     expression_count = int(model.get_num_face_expression_blendshapes())
-    model_parameter_count = len(parameter_names) - identity_count - expression_count
+    if oracle_kind == TORCHSCRIPT_ORACLE_KIND:
+        transform_input_count = _extract_torchscript_parameter_transform_width(model)
+        if transform_input_count is None:
+            transform_input_count = int(parameter_limits.shape[0])
+        model_parameter_count = int(transform_input_count) - identity_count
+    else:
+        model_parameter_count = len(parameter_names) - identity_count - expression_count
     if model_parameter_count <= 0:
         raise ValueError("Official parameter metadata extraction produced an invalid modelParameterCount.")
 
@@ -149,6 +170,7 @@ def build_parameter_metadata(model, *, oracle_kind: str = OFFICIAL_ORACLE_KIND) 
     trailing_names = parameter_names[model_parameter_count:]
     identity_names = trailing_names[:identity_count]
     expression_names = trailing_names[identity_count : identity_count + expression_count]
+    unknown_limit = float(np.finfo(np.float32).max)
 
     for local_index in range(identity_count):
         raw_name = identity_names[local_index] if local_index < len(identity_names) else f"blend_{local_index}"
@@ -180,6 +202,12 @@ def build_parameter_metadata(model, *, oracle_kind: str = OFFICIAL_ORACLE_KIND) 
         key = f"expression_{local_index:02d}"
         alt_key = f"expression_{local_index}"
         raw_limit_index = model_parameter_count + identity_count + local_index
+        if raw_limit_index < parameter_limits.shape[0]:
+            min_limit = float(parameter_limits[raw_limit_index, 0])
+            max_limit = float(parameter_limits[raw_limit_index, 1])
+        else:
+            min_limit = -unknown_limit
+            max_limit = unknown_limit
         parameters.append(
             {
                 "key": key,
@@ -190,8 +218,8 @@ def build_parameter_metadata(model, *, oracle_kind: str = OFFICIAL_ORACLE_KIND) 
                 "rawIndex": local_index,
                 "rawKey": raw_name,
                 "default": 0.0,
-                "min": float(parameter_limits[raw_limit_index, 0]),
-                "max": float(parameter_limits[raw_limit_index, 1]),
+                "min": min_limit,
+                "max": max_limit,
             }
         )
         sections["expression"][key] = local_index

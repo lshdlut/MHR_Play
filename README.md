@@ -14,6 +14,12 @@ MHR Play is a public-facing interactive MHR experience built on top of `mujoco-w
 - **Rich debugging overlays**: skeleton, joint labels, local axes, and influence-preview heatmaps are available in the viewer.
 - **Performance-oriented runtime**: the heavy-family WASM core has been optimized specifically for interactive `blend` / `expression` workloads.
 
+## Parity
+
+- The portable runtime follows the optimized sparse execution path and is **not bitwise exact** to the **official full-package CPU route** (`official-full-cpu`).
+- On the current golden cases, the remaining vertex residuals stay in the low `1e-5` range, which is the same order of magnitude we observe in the **official TorchScript model route** (`official-torchscript`, `lod=1` only).
+- The official TorchScript model route is kept as a secondary reference route, not the primary public runtime.
+
 ## Gallery
 
 | Main | Skin / Skeleton / Labels | Influence Preview |
@@ -55,3 +61,6 @@ http://127.0.0.1:4269/mhr.html?lod=1
 - `mjwp_inject/site/mhr.html` is the only interactive product surface in this repo.
 - The old standalone/embed product shell is intentionally removed.
 - Internal research notes and historical contract writeups are now local-only archive material and are no longer part of the public documentation set.
+- Official reference names used in this repo:
+  - `official full-package CPU route` (`official-full-cpu`)
+  - `official TorchScript model route` (`official-torchscript`, `lod=1` only)

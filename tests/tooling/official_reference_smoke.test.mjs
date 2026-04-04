@@ -90,6 +90,23 @@ test('official oracle and preprocess smoke', async (t) => {
     const report = JSON.parse(readFileSync(path.join(oracleOut, 'report.json'), 'utf8'));
     assert.equal(report.lod, 1);
     assert.equal(report.oracle, 'official-full-cpu');
+
+    const torchscriptOut = path.join(tempRoot, 'oracle-torchscript');
+    const torchscriptRun = runOptionalPython([
+      'tools/run_python.py',
+      'tools/mhr_python_oracle.py',
+      '--lod',
+      '1',
+      '--oracle',
+      'official-torchscript',
+      '--out',
+      torchscriptOut,
+    ]);
+    assert.equal(torchscriptRun.status, 0, torchscriptRun.stderr || torchscriptRun.stdout);
+    assert.ok(existsSync(path.join(torchscriptOut, 'report.json')));
+    const torchscriptReport = JSON.parse(readFileSync(path.join(torchscriptOut, 'report.json'), 'utf8'));
+    assert.equal(torchscriptReport.lod, 1);
+    assert.equal(torchscriptReport.oracle, 'official-torchscript');
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });
   }

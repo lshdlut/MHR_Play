@@ -58,6 +58,10 @@ typedef struct MhrDataWorkspaceCounts {
 typedef enum MhrForwardFlags {
   MHR_FORWARD_DEFAULT = 0,
   MHR_FORWARD_SKIP_DERIVED = 1 << 0,
+  MHR_FORWARD_EXACT_SURFACE_MORPH = 1 << 1,
+  MHR_FORWARD_EXACT_LINEAR_ALGEBRA = 1 << 2,
+  MHR_FORWARD_EXACT_PARITY =
+      MHR_FORWARD_EXACT_SURFACE_MORPH | MHR_FORWARD_EXACT_LINEAR_ALGEBRA,
 } MhrForwardFlags;
 
 typedef enum MhrStageDebugKind {

@@ -14,6 +14,12 @@ MHR Play 是一个面向公众展示的交互式 MHR 体验页：它把官方 MH
 - **可视化调试能力**：支持 skeleton、joint labels、local axes、influence preview heatmap 等表达。
 - **性能导向的浏览器 runtime**：heavy family 的 core 已针对 WASM 路线做过专项优化。
 
+## 对齐说明
+
+- portable runtime 走的是优化后的 sparse 执行路径，**不是**对 **official full-package CPU route**（`official-full-cpu`）的 bitwise exact 对齐。
+- 在当前 golden cases 上，剩余的 vertex 误差维持在低 `1e-5` 量级，和 **official TorchScript model route**（`official-torchscript`，仅 `lod=1`）属于同一数量级。
+- official TorchScript model route 目前只作为次级参考路线保留，不是主 public runtime。
+
 ## 展示
 
 | Main | Skin / Skeleton / Labels | Influence Preview |
@@ -55,3 +61,6 @@ http://127.0.0.1:4269/mhr.html?lod=1
 - 当前唯一交互产品面是 `mjwp_inject/site/mhr.html`。
 - 仓库不再保留旧 standalone/embed 页面。
 - 内部研究型设计稿和历史合同文档已下放到本地归档区，不再作为公开仓库文档的一部分。
+- 仓库里使用的官方参考路线命名：
+  - `official full-package CPU route`（`official-full-cpu`）
+  - `official TorchScript model route`（`official-torchscript`，仅 `lod=1`）
