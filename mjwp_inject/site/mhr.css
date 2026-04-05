@@ -32,10 +32,7 @@ html[data-play-profile="mhr"] [data-testid^="section-"]:not([data-testid^="secti
   display: none !important;
 }
 
-html[data-play-profile="mhr"] [data-testid="overlay-help"],
-html[data-play-profile="mhr"] [data-testid="overlay-info"],
-html[data-play-profile="mhr"] [data-testid="overlay-profiler"],
-html[data-play-profile="mhr"] [data-testid="overlay-sensor"] {
+html[data-play-profile="mhr"] .overlay-stack > .overlay-card:not(.mhr-perf-hud) {
   display: none !important;
 }
 

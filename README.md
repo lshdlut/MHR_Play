@@ -4,15 +4,16 @@ English | [简体中文](README.zh-CN.md)
 
 ![MHR Play main view](assets/main.png)
 
-MHR Play is a public-facing interactive MHR experience built on top of `mujoco-wasm-play`. It combines official MHR assets, an optimized WASM runtime, and a Play-style Three.js viewer into a single browser product surface.
+MHR Play is a public-facing browser experience for Meta's [Momentum Human Rig (MHR)](https://arxiv.org/abs/2511.15586), built on top of [mujoco-wasm-play](https://github.com/lshdlut/mujoco-wasm-play). It combines the official [MHR repository](https://github.com/facebookresearch/MHR), official MHR assets, an optimized WASM runtime, and a Play-style Three.js UI into a single browser product surface.
 
-- Live demo: `https://lshdlut.github.io/MHR_Play/`
-- Direct viewer: `https://lshdlut.github.io/MHR_Play/viewer/?lod=1`
+- Public viewer: [https://lshdlut.github.io/MHR_Play/](https://lshdlut.github.io/MHR_Play/)
+- This GitHub Pages deployment is a lightweight public mirror. The future primary hosted surface will move to `lshdlut site`.
 
 ## Highlights
 
 - **Full official MHR asset path**: the page loads the full official runtime IR instead of a simplified demo mesh.
-- **Play-style browser UI**: panels, HUD, camera controls, and scene interaction are hosted by `mujoco-wasm-play`.
+- **Play-style browser UI**: panels, HUD, camera controls, and scene interaction are hosted by [mujoco-wasm-play](https://github.com/lshdlut/mujoco-wasm-play).
+- **Built on mujoco-wasm-play**: the project reuses our lightweight Play-hosted viewer shell for browser-first, embed-friendly MuJoCo apps.
 - **Multi-LoD support**: the local/runtime surface supports `lod0..lod6`; the public GitHub Pages build ships embeddable `lod1..lod6` viewers.
 - **Rich debugging overlays**: skeleton, joint labels, local axes, and influence-preview heatmaps are available in the viewer.
 - **Performance-oriented runtime**: the heavy-family WASM core has been optimized specifically for interactive `blend` / `expression` workloads.
@@ -32,13 +33,7 @@ MHR Play is a public-facing interactive MHR experience built on top of `mujoco-w
 
 ## Quickstart
 
-- Public viewer:
-
-```text
-https://lshdlut.github.io/MHR_Play/
-```
-
-- Start the local page from the repository root with your own Play checkout:
+- Start the local page from the repository root with your own [mujoco-wasm-play](https://github.com/lshdlut/mujoco-wasm-play) checkout:
 
 ```powershell
 $env:PYTHON_EXE='<python>'
@@ -62,3 +57,7 @@ http://127.0.0.1:4269/mhr.html?lod=1
 - `tools/`: preprocessing, build, bench, smoke, and repository guardrails
 - `tests/`: tooling, contract, and smoke regression coverage
 - `native/`: portable runtime core and C ABI
+
+## Acknowledgements
+
+- Meta for releasing [Momentum Human Rig (MHR)](https://github.com/facebookresearch/MHR) and the paper [MHR: Momentum Human Rig](https://arxiv.org/abs/2511.15586).

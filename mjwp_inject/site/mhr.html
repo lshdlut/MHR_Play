@@ -18,14 +18,96 @@
     <script src="./site_config.js"></script>
     <script>
       (() => {
+        const defaultLod = 1;
+        const supportedLods = [0, 1, 2, 3, 4, 5, 6];
+        const fallbackManifestTemplate = './mhr-official/lod{lod}/manifest.json';
+        const fallbackAssetBaseTemplate = './mhr-official/lod{lod}/';
         const url = new URL(window.location.href);
         const rawLod = url.searchParams.get('lod');
-        const lod = rawLod == null || rawLod === ''
-          ? 1
-          : Number(rawLod);
-        if (!Number.isInteger(lod) || lod < 0) {
-          throw new Error(`Invalid MHR LoD query parameter: ${String(rawLod)}`);
+
+        const configuredLodValue = globalThis.PLAY_MHR_LOD;
+        const configuredLod = configuredLodValue == null || configuredLodValue === ''
+          ? null
+          : Number(configuredLodValue);
+        const candidateLod = rawLod == null || rawLod === '' ? configuredLod : Number(rawLod);
+        const lod = Number.isInteger(candidateLod) && supportedLods.includes(candidateLod) ? candidateLod : defaultLod;
+
+        function replaceLodTemplate(template, numericLod) {
+          return String(template || '').replaceAll('{lod}', String(numericLod));
         }
+
+        function ensureTrailingSlash(rawUrl) {
+          const href = new URL(String(rawUrl || ''), window.location.href).href;
+          return href.endsWith('/') ? href : `${href}/`;
+        }
+
+        function resolveAbsoluteUrl(rawUrl) {
+          return new URL(String(rawUrl || ''), window.location.href).href;
+        }
+
+        function usesConfiguredLod(numericLod) {
+          return Number.isInteger(configuredLod) && numericLod === configuredLod;
+        }
+
+        function deriveLodPath(rawUrl, numericLod, { expectManifest = false } = {}) {
+          const urlValue = String(rawUrl || '').trim();
+          if (!urlValue) {
+            return '';
+          }
+          const target = new URL(urlValue, window.location.href);
+          const nextPath = expectManifest
+            ? target.pathname.replace(/\/lod\d+\/manifest\.json$/i, `/lod${numericLod}/manifest.json`)
+            : target.pathname.replace(/\/lod\d+\/?$/i, `/lod${numericLod}/`);
+          if (nextPath === target.pathname) {
+            const fallback = expectManifest
+              ? `lod${numericLod}/manifest.json`
+              : `lod${numericLod}/`;
+            const baseHref = target.pathname.endsWith('/')
+              ? target.href
+              : new URL('./', target.href).href;
+            const resolved = new URL(fallback, baseHref).href;
+            return expectManifest ? resolved : ensureTrailingSlash(resolved);
+          }
+          target.pathname = nextPath;
+          return expectManifest ? target.href : ensureTrailingSlash(target.href);
+        }
+
+        function resolveManifestUrl(numericLod) {
+          const configuredManifestUrl = String(globalThis.PLAY_MHR_MANIFEST_URL || '').trim();
+          if (configuredManifestUrl) {
+            if (usesConfiguredLod(numericLod)) {
+              return resolveAbsoluteUrl(configuredManifestUrl);
+            }
+            return deriveLodPath(configuredManifestUrl, numericLod, { expectManifest: true });
+          }
+          const configuredAssetBaseUrl = String(globalThis.PLAY_MHR_ASSET_BASE_URL || '').trim();
+          if (configuredAssetBaseUrl) {
+            const assetBaseUrl = usesConfiguredLod(numericLod)
+              ? ensureTrailingSlash(resolveAbsoluteUrl(configuredAssetBaseUrl))
+              : deriveLodPath(configuredAssetBaseUrl, numericLod);
+            return new URL('manifest.json', assetBaseUrl).href;
+          }
+          return replaceLodTemplate(fallbackManifestTemplate, numericLod);
+        }
+
+        function resolveAssetBaseUrl(numericLod) {
+          const configuredAssetBaseUrl = String(globalThis.PLAY_MHR_ASSET_BASE_URL || '').trim();
+          if (configuredAssetBaseUrl) {
+            if (usesConfiguredLod(numericLod)) {
+              return ensureTrailingSlash(resolveAbsoluteUrl(configuredAssetBaseUrl));
+            }
+            return deriveLodPath(configuredAssetBaseUrl, numericLod);
+          }
+          const configuredManifestUrl = String(globalThis.PLAY_MHR_MANIFEST_URL || '').trim();
+          if (configuredManifestUrl) {
+            if (usesConfiguredLod(numericLod)) {
+              return ensureTrailingSlash(new URL('./', resolveAbsoluteUrl(configuredManifestUrl)).href);
+            }
+            return deriveLodPath(configuredManifestUrl, numericLod);
+          }
+          return ensureTrailingSlash(replaceLodTemplate(fallbackAssetBaseTemplate, numericLod));
+        }
+
         if (!url.searchParams.get('model')) {
           url.searchParams.set('model', 'model/mhr_stage.xml');
         }
@@ -35,9 +117,10 @@
         history.replaceState(null, '', url);
         globalThis.PLAY_UI_PROFILE = 'mhr';
         globalThis.PLAY_PLUGINS = ['./plugins/mhr_profile_plugin.mjs'];
+        globalThis.PLAY_MHR_SUPPORTED_LODS = supportedLods;
         globalThis.PLAY_MHR_LOD = lod;
-        globalThis.PLAY_MHR_MANIFEST_URL = `/mhr-official/lod${lod}/manifest.json`;
-        globalThis.PLAY_MHR_ASSET_BASE_URL = `/mhr-official/lod${lod}/`;
+        globalThis.PLAY_MHR_MANIFEST_URL = resolveManifestUrl(lod);
+        globalThis.PLAY_MHR_ASSET_BASE_URL = resolveAssetBaseUrl(lod);
         globalThis.PLAY_UI_PANEL_DEFAULTS = { left: true, right: true };
         globalThis.PLAY_UI_SECTION_DEFAULT_OPEN = {
           left: {

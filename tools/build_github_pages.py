@@ -269,8 +269,186 @@ def normalize_supported_lods(raw: object, default_lod: int) -> list[int]:
     return normalized
 
 
-def build_viewer_html(default_lod: int, supported_lods: list[int]) -> str:
+def build_viewer_bootstrap_script(
+    default_lod: int | None,
+    supported_lods: list[int],
+    *,
+    fallback_manifest_template: str | None,
+    fallback_asset_base_template: str | None,
+    storage_namespace: str | None,
+    built_in_default_open: bool | None,
+) -> str:
     supported_json = json.dumps(supported_lods)
+    fallback_manifest_json = json.dumps(fallback_manifest_template)
+    fallback_asset_base_json = json.dumps(fallback_asset_base_template)
+    storage_namespace_line = (
+        f"        globalThis.PLAY_UI_STORAGE_NAMESPACE = {json.dumps(storage_namespace)};\n"
+        if storage_namespace is not None
+        else ""
+    )
+    built_in_default_open_line = (
+        f"        globalThis.PLAY_UI_BUILTIN_DEFAULT_OPEN = {'true' if built_in_default_open else 'false'};\n"
+        if built_in_default_open is not None
+        else ""
+    )
+    default_lod_json = "null" if default_lod is None else str(default_lod)
+    return f"""      (() => {{
+        const defaultLod = {default_lod_json};
+        const supportedLods = {supported_json};
+        const fallbackManifestTemplate = {fallback_manifest_json};
+        const fallbackAssetBaseTemplate = {fallback_asset_base_json};
+        const url = new URL(window.location.href);
+        const rawLod = url.searchParams.get('lod');
+        const configuredLodValue = globalThis.PLAY_MHR_LOD;
+        const configuredLod = configuredLodValue == null || configuredLodValue === ''
+          ? null
+          : Number(configuredLodValue);
+        const candidateLod = rawLod == null || rawLod === '' ? configuredLod : Number(rawLod);
+        const fallbackLod = Number.isInteger(defaultLod) && supportedLods.includes(defaultLod)
+          ? defaultLod
+          : (supportedLods[0] ?? 1);
+        const lod = Number.isInteger(candidateLod) && supportedLods.includes(candidateLod) ? candidateLod : fallbackLod;
+
+        function replaceLodTemplate(template, numericLod) {{
+          return String(template || '').replaceAll('{{lod}}', String(numericLod));
+        }}
+
+        function ensureTrailingSlash(rawUrl) {{
+          const href = new URL(String(rawUrl || ''), window.location.href).href;
+          return href.endsWith('/') ? href : `${{href}}/`;
+        }}
+
+        function resolveAbsoluteUrl(rawUrl) {{
+          return new URL(String(rawUrl || ''), window.location.href).href;
+        }}
+
+        function usesConfiguredLod(numericLod) {{
+          return Number.isInteger(configuredLod) && numericLod === configuredLod;
+        }}
+
+        function deriveLodPath(rawUrl, numericLod, {{ expectManifest = false }} = {{}}) {{
+          const urlValue = String(rawUrl || '').trim();
+          if (!urlValue) {{
+            return '';
+          }}
+          const target = new URL(urlValue, window.location.href);
+          const nextPath = expectManifest
+            ? target.pathname.replace(/\\/lod\\d+\\/manifest\\.json$/i, `/lod${{numericLod}}/manifest.json`)
+            : target.pathname.replace(/\\/lod\\d+\\/?$/i, `/lod${{numericLod}}/`);
+          if (nextPath === target.pathname) {{
+            const fallback = expectManifest
+              ? `lod${{numericLod}}/manifest.json`
+              : `lod${{numericLod}}/`;
+            const baseHref = target.pathname.endsWith('/')
+              ? target.href
+              : new URL('./', target.href).href;
+            const resolved = new URL(fallback, baseHref).href;
+            return expectManifest ? resolved : ensureTrailingSlash(resolved);
+          }}
+          target.pathname = nextPath;
+          return expectManifest ? target.href : ensureTrailingSlash(target.href);
+        }}
+
+        function resolveManifestUrl(numericLod) {{
+          const configuredManifestUrl = String(globalThis.PLAY_MHR_MANIFEST_URL || '').trim();
+          if (configuredManifestUrl) {{
+            if (usesConfiguredLod(numericLod)) {{
+              return resolveAbsoluteUrl(configuredManifestUrl);
+            }}
+            return deriveLodPath(configuredManifestUrl, numericLod, {{ expectManifest: true }});
+          }}
+          const configuredAssetBaseUrl = String(globalThis.PLAY_MHR_ASSET_BASE_URL || '').trim();
+          if (configuredAssetBaseUrl) {{
+            const assetBaseUrl = usesConfiguredLod(numericLod)
+              ? ensureTrailingSlash(resolveAbsoluteUrl(configuredAssetBaseUrl))
+              : deriveLodPath(configuredAssetBaseUrl, numericLod);
+            return new URL('manifest.json', assetBaseUrl).href;
+          }}
+          if (fallbackManifestTemplate) {{
+            return replaceLodTemplate(fallbackManifestTemplate, numericLod);
+          }}
+          if (fallbackAssetBaseTemplate) {{
+            return new URL('manifest.json', ensureTrailingSlash(replaceLodTemplate(fallbackAssetBaseTemplate, numericLod))).href;
+          }}
+          return '';
+        }}
+
+        function resolveAssetBaseUrl(numericLod) {{
+          const configuredAssetBaseUrl = String(globalThis.PLAY_MHR_ASSET_BASE_URL || '').trim();
+          if (configuredAssetBaseUrl) {{
+            if (usesConfiguredLod(numericLod)) {{
+              return ensureTrailingSlash(resolveAbsoluteUrl(configuredAssetBaseUrl));
+            }}
+            return deriveLodPath(configuredAssetBaseUrl, numericLod);
+          }}
+          const configuredManifestUrl = String(globalThis.PLAY_MHR_MANIFEST_URL || '').trim();
+          if (configuredManifestUrl) {{
+            if (usesConfiguredLod(numericLod)) {{
+              return ensureTrailingSlash(new URL('./', resolveAbsoluteUrl(configuredManifestUrl)).href);
+            }}
+            return deriveLodPath(configuredManifestUrl, numericLod);
+          }}
+          if (fallbackAssetBaseTemplate) {{
+            return ensureTrailingSlash(replaceLodTemplate(fallbackAssetBaseTemplate, numericLod));
+          }}
+          if (fallbackManifestTemplate) {{
+            return deriveLodPath(replaceLodTemplate(fallbackManifestTemplate, numericLod), numericLod);
+          }}
+          return '';
+        }}
+
+        if (!url.searchParams.get('model')) {{
+          url.searchParams.set('model', 'model/mhr_stage.xml');
+        }}
+        if (url.searchParams.get('lod') !== String(lod)) {{
+          url.searchParams.set('lod', String(lod));
+        }}
+        history.replaceState(null, '', url);
+
+        globalThis.PLAY_UI_PROFILE = 'mhr';
+        globalThis.PLAY_PLUGINS = ['./plugins/mhr_profile_plugin.mjs'];
+        globalThis.PLAY_MHR_SUPPORTED_LODS = supportedLods;
+        globalThis.PLAY_MHR_LOD = lod;
+        globalThis.PLAY_MHR_MANIFEST_URL = resolveManifestUrl(lod);
+        globalThis.PLAY_MHR_ASSET_BASE_URL = resolveAssetBaseUrl(lod);
+        if (!globalThis.PLAY_MHR_MANIFEST_URL) {{
+          throw new Error('MHR Play viewer requires PLAY_MHR_MANIFEST_URL or PLAY_MHR_ASSET_BASE_URL via site_config.js.');
+        }}
+        if (!globalThis.PLAY_MHR_ASSET_BASE_URL) {{
+          throw new Error('MHR Play viewer requires PLAY_MHR_ASSET_BASE_URL or PLAY_MHR_MANIFEST_URL via site_config.js.');
+        }}
+{storage_namespace_line}{built_in_default_open_line}        globalThis.PLAY_UI_PANEL_DEFAULTS = {{ left: true, right: true }};
+        globalThis.PLAY_UI_SECTION_DEFAULT_OPEN = {{
+          left: {{
+            'plugin:mhr-control': true,
+            'plugin:mhr-scale': true,
+            'plugin:mhr-blend': true
+          }},
+          right: {{
+            'plugin:mhr-pose': true,
+            'plugin:mhr-fixed': true
+          }}
+        }};
+      }})();"""
+
+
+def build_viewer_html(
+    default_lod: int | None,
+    supported_lods: list[int],
+    *,
+    fallback_manifest_template: str | None = "./mhr-official/lod{lod}/manifest.json",
+    fallback_asset_base_template: str | None = "./mhr-official/lod{lod}/",
+    storage_namespace: str | None = "mhr-pages",
+    built_in_default_open: bool | None = False,
+) -> str:
+    bootstrap_script = build_viewer_bootstrap_script(
+        default_lod,
+        supported_lods,
+        fallback_manifest_template=fallback_manifest_template,
+        fallback_asset_base_template=fallback_asset_base_template,
+        storage_namespace=storage_namespace,
+        built_in_default_open=built_in_default_open,
+    )
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -290,39 +468,7 @@ def build_viewer_html(default_lod: int, supported_lods: list[int]) -> str:
     </script>
     <script src="./site_config.js"></script>
     <script>
-      (() => {{
-        const defaultLod = {default_lod};
-        const supportedLods = {supported_json};
-        const url = new URL(window.location.href);
-        const rawLod = url.searchParams.get('lod');
-        const parsed = rawLod == null || rawLod === '' ? defaultLod : Number(rawLod);
-        const lod = Number.isInteger(parsed) && supportedLods.includes(parsed) ? parsed : defaultLod;
-        if (!url.searchParams.get('model')) {{
-          url.searchParams.set('model', 'model/mhr_stage.xml');
-        }}
-        if (url.searchParams.get('lod') !== String(lod)) {{
-          url.searchParams.set('lod', String(lod));
-        }}
-        history.replaceState(null, '', url);
-        globalThis.PLAY_UI_PROFILE = 'mhr';
-        globalThis.PLAY_PLUGINS = ['./plugins/mhr_profile_plugin.mjs'];
-        globalThis.PLAY_MHR_SUPPORTED_LODS = supportedLods;
-        globalThis.PLAY_MHR_LOD = lod;
-        globalThis.PLAY_MHR_MANIFEST_URL = `./mhr-official/lod${{lod}}/manifest.json`;
-        globalThis.PLAY_MHR_ASSET_BASE_URL = `./mhr-official/lod${{lod}}/`;
-        globalThis.PLAY_UI_PANEL_DEFAULTS = {{ left: true, right: true }};
-        globalThis.PLAY_UI_SECTION_DEFAULT_OPEN = {{
-          left: {{
-            'plugin:mhr-control': true,
-            'plugin:mhr-scale': true,
-            'plugin:mhr-blend': true
-          }},
-          right: {{
-            'plugin:mhr-pose': true,
-            'plugin:mhr-fixed': true
-          }}
-        }};
-      }})();
+{bootstrap_script}
     </script>
     <script data-play-entry-variant="single" src="./app/entry_bootstrap.js"></script>
   </head>
@@ -333,255 +479,76 @@ def build_viewer_html(default_lod: int, supported_lods: list[int]) -> str:
 """
 
 
-def build_landing_html(default_lod: int, supported_lods: list[int], viewer_path: str) -> str:
+def build_landing_html(default_lod: int | None, supported_lods: list[int], viewer_path: str) -> str:
+    default_query = "" if default_lod is None else f"?lod={default_lod}"
+    default_link = f"./{viewer_path}/{default_query}"
+    lod_redirect_block = (
+        ""
+        if default_lod is None
+        else f"        if (!params.has('lod')) params.set('lod', '{default_lod}');\n"
+    )
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <title>MHR Play</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="0; url={default_link}" />
     <link rel="icon" href="./{viewer_path}/favicon.ico" />
+    <script>
+      (() => {{
+        const target = new URL('./{viewer_path}/', window.location.href);
+        const params = new URLSearchParams(window.location.search);
+{lod_redirect_block}        
+        for (const [key, value] of params.entries()) {{
+          target.searchParams.set(key, value);
+        }}
+        window.location.replace(target.href);
+      }})();
+    </script>
     <style>
-      :root {{
-        color-scheme: light;
-        --page-bg: #f3f4ef;
-        --panel-bg: rgba(255, 255, 255, 0.92);
-        --panel-border: rgba(36, 44, 33, 0.14);
-        --text: #20251c;
-        --muted: #5d6858;
-        --accent: #254f38;
-        --accent-soft: #e4eee4;
-        --frame-bg: #dce5d8;
-        --shadow: 0 28px 80px rgba(32, 37, 28, 0.12);
-        --radius: 22px;
-      }}
-      * {{ box-sizing: border-box; }}
       body {{
         margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
         font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-        color: var(--text);
-        background:
-          radial-gradient(circle at top left, rgba(104, 145, 95, 0.18), transparent 34%),
-          linear-gradient(180deg, #fafaf6 0%, var(--page-bg) 100%);
+        background: #f6f8fb;
+        color: #182033;
       }}
       main {{
-        max-width: 1380px;
-        margin: 0 auto;
-        padding: 40px 24px 56px;
+        width: min(640px, calc(100vw - 32px));
+        padding: 24px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(24, 32, 51, 0.12);
+        box-shadow: 0 20px 60px rgba(15, 28, 58, 0.10);
       }}
-      .hero {{
-        display: grid;
-        grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
-        gap: 24px;
-        align-items: start;
+      h1 {{
+        margin: 0 0 10px;
+        font-size: 28px;
       }}
-      .copy,
-      .preview,
-      .gallery {{
-        background: var(--panel-bg);
-        border: 1px solid var(--panel-border);
-        border-radius: var(--radius);
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(14px);
-      }}
-      .copy {{
-        padding: 28px;
-      }}
-      .copy h1 {{
+      p {{
         margin: 0 0 12px;
-        font-size: clamp(2rem, 3.2vw, 3.2rem);
-        line-height: 1.04;
+        line-height: 1.7;
+        color: #52607a;
       }}
-      .copy p {{
-        margin: 0;
-        color: var(--muted);
-        line-height: 1.58;
-        font-size: 1rem;
+      a {{
+        color: #0d4fd8;
       }}
-      .badge {{
-        display: inline-flex;
-        margin-bottom: 14px;
-        padding: 7px 12px;
-        border-radius: 999px;
-        font-size: 0.8rem;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--accent);
-        background: var(--accent-soft);
-      }}
-      .actions {{
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-top: 22px;
-      }}
-      .actions a {{
-        text-decoration: none;
-        border-radius: 999px;
-        padding: 11px 18px;
-        font-weight: 600;
-      }}
-      .actions a.primary {{
-        color: white;
-        background: var(--accent);
-      }}
-      .actions a.secondary {{
-        color: var(--accent);
-        background: var(--accent-soft);
-      }}
-      .meta {{
-        margin-top: 18px;
-        display: grid;
-        gap: 8px;
-        color: var(--muted);
-        font-size: 0.92rem;
-      }}
-      .preview {{
-        padding: 14px;
-      }}
-      .preview-header {{
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 16px;
-        padding: 2px 4px 14px;
-      }}
-      .preview-header h2 {{
-        margin: 0;
-        font-size: 1rem;
-      }}
-      .preview-header p {{
-        margin: 4px 0 0;
-        color: var(--muted);
-        font-size: 0.9rem;
-      }}
-      .preview-shell {{
-        width: 100%;
-        aspect-ratio: 16 / 9;
-        border-radius: 18px;
-        overflow: hidden;
-        background: var(--frame-bg);
-      }}
-      iframe {{
-        width: 100%;
-        height: 100%;
-        border: 0;
-        display: block;
-      }}
-      .gallery {{
-        margin-top: 24px;
-        padding: 18px;
-      }}
-      .gallery h2 {{
-        margin: 0 0 16px;
-        font-size: 1.05rem;
-      }}
-      .gallery-grid {{
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 14px;
-      }}
-      .gallery-card {{
-        border-radius: 18px;
-        overflow: hidden;
-        background: white;
-        border: 1px solid rgba(36, 44, 33, 0.08);
-      }}
-      .gallery-card img {{
-        width: 100%;
-        aspect-ratio: 4 / 3;
-        object-fit: cover;
-        display: block;
-      }}
-      .gallery-card strong {{
-        display: block;
-        padding: 12px 14px 4px;
-        font-size: 0.94rem;
-      }}
-      .gallery-card span {{
-        display: block;
-        padding: 0 14px 14px;
-        color: var(--muted);
-        font-size: 0.88rem;
-        line-height: 1.45;
-      }}
-      @media (max-width: 980px) {{
-        .hero {{
-          grid-template-columns: 1fr;
-        }}
-        .gallery-grid {{
-          grid-template-columns: 1fr;
-        }}
+      code {{
+        padding: 2px 6px;
+        border-radius: 8px;
+        background: rgba(24, 32, 51, 0.08);
       }}
     </style>
   </head>
   <body>
     <main>
-      <section class="hero">
-        <div class="copy">
-          <div class="badge">Public Viewer</div>
-          <h1>MHR Play</h1>
-          <p>MHR Play is a Play-hosted browser viewer for official MHR assets, the portable WASM runtime, and the full interactive profile UI. The public GitHub Pages build ships a subpath-safe LoD1 viewer that can later be embedded directly into another site shell.</p>
-          <div class="actions">
-            <a class="primary" id="open-full" href="./{viewer_path}/?lod={default_lod}">Open full viewer</a>
-            <a class="secondary" href="https://github.com/lshdlut/MHR_Play">Source on GitHub</a>
-          </div>
-          <div class="meta">
-            <div>Public runtime: optimized sparse portable route</div>
-            <div>Public asset scope: LoD {supported_lods[0]}-{supported_lods[-1]} runtime IR bundles</div>
-            <div>Embed-ready entrypoint: <code>./{viewer_path}/?embed=1&amp;lod={default_lod}</code></div>
-          </div>
-        </div>
-        <div class="preview">
-          <div class="preview-header">
-            <div>
-              <h2>Live Preview</h2>
-              <p>The embedded frame below uses the same viewer entry that downstream sites can iframe later.</p>
-            </div>
-          </div>
-          <div class="preview-shell">
-            <iframe id="demo-frame" title="MHR Play demo" loading="lazy"></iframe>
-          </div>
-        </div>
-      </section>
-      <section class="gallery">
-        <h2>Feature Glimpses</h2>
-        <div class="gallery-grid">
-          <article class="gallery-card">
-            <img src="./assets/influence_heatmap.png" alt="Influence preview heatmap" />
-            <strong>Influence Preview</strong>
-            <span>Heatmap debugging on the live surface deformation route.</span>
-          </article>
-          <article class="gallery-card">
-            <img src="./assets/skin_skel_axes_label.png" alt="Skin, skeleton, axes, and labels" />
-            <strong>Skin / Skeleton / Joint Axes / Labels</strong>
-            <span>Overlay-rich scene debugging inside the Play-hosted interface.</span>
-          </article>
-          <article class="gallery-card">
-            <img src="./assets/skel.png" alt="Skeleton view" />
-            <strong>Skeleton View</strong>
-            <span>Clean bone-space inspection with the portable runtime output.</span>
-          </article>
-        </div>
-      </section>
+      <h1>MHR Play</h1>
+      <p>Redirecting to the public viewer for Meta's <a href="https://arxiv.org/abs/2511.15586">Momentum Human Rig (MHR)</a>.</p>
+      <p>If the redirect does not happen, open <a href="{default_link}">the viewer</a>.</p>
     </main>
-    <script>
-      (() => {{
-        const params = new URLSearchParams(window.location.search);
-        const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
-        const font = new Set(['50', '75', '100', '150', '200']).has(String(params.get('font') || '')) ? String(params.get('font')) : '75';
-        const spacing = params.get('spacing') === 'wide' ? 'wide' : 'tight';
-        const viewerUrl = new URL('./{viewer_path}/', window.location.href);
-        viewerUrl.searchParams.set('lod', '{default_lod}');
-        viewerUrl.searchParams.set('theme', theme);
-        viewerUrl.searchParams.set('font', font);
-        viewerUrl.searchParams.set('spacing', spacing);
-        const fullUrl = new URL(viewerUrl.href);
-        viewerUrl.searchParams.set('embed', '1');
-        document.getElementById('demo-frame').src = viewerUrl.href;
-        document.getElementById('open-full').href = fullUrl.href;
-      }})();
-    </script>
   </body>
 </html>
 """
