@@ -13,7 +13,7 @@ MHR Play 是一个面向公众展示的交互式 MHR 体验页：它把官方 MH
 
 - **完整官方 MHR 资产链**：页面直接加载 full official runtime IR，而不是简化 demo 模型。
 - **Play 风格的交互界面**：沿用 `mujoco-wasm-play` 的面板、视图控制、HUD 和 Three.js 场景。
-- **多 LoD 支持**：本地/runtime 主线支持 `lod0..lod6`；公开 GitHub Pages 版本提供可嵌入的 `lod1` viewer。
+- **多 LoD 支持**：本地/runtime 主线支持 `lod0..lod6`；公开 GitHub Pages 版本提供可嵌入的 `lod1..lod6` viewer。
 - **可视化调试能力**：支持 skeleton、joint labels、local axes、influence preview heatmap 等表达。
 - **性能导向的浏览器 runtime**：heavy family 的 core 已针对 WASM 路线做过专项优化。
 
@@ -22,6 +22,7 @@ MHR Play 是一个面向公众展示的交互式 MHR 体验页：它把官方 MH
 - portable runtime 走的是优化后的 sparse 执行路径，**不是**对 **official full-package CPU route**（`official-full-cpu`）的 bitwise exact 对齐。
 - 在当前 golden cases 上，剩余的 vertex 误差维持在低 `1e-5` 量级，和 **official TorchScript model route**（`official-torchscript`，仅 `lod=1`）属于同一数量级。
 - official TorchScript model route 目前只作为次级参考路线保留，不是主 public runtime。
+- 公开 GitHub Pages 部署刻意不包含 `lod0`；当前上线的是 `lod1..lod6`，更重的 `lod0` 留给后续更大的站点托管。
 
 ## 展示
 

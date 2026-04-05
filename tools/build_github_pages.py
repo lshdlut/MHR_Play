@@ -333,7 +333,7 @@ def build_viewer_html(default_lod: int, supported_lods: list[int]) -> str:
 """
 
 
-def build_landing_html(default_lod: int, viewer_path: str) -> str:
+def build_landing_html(default_lod: int, supported_lods: list[int], viewer_path: str) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -528,7 +528,7 @@ def build_landing_html(default_lod: int, viewer_path: str) -> str:
           </div>
           <div class="meta">
             <div>Public runtime: optimized sparse portable route</div>
-            <div>Public asset scope: LoD{default_lod} runtime IR bundle</div>
+            <div>Public asset scope: LoD {supported_lods[0]}-{supported_lods[-1]} runtime IR bundles</div>
             <div>Embed-ready entrypoint: <code>./{viewer_path}/?embed=1&amp;lod={default_lod}</code></div>
           </div>
         </div>
@@ -668,7 +668,12 @@ def build_site(
     copy_path(Path("mjwp_inject/site/model/mhr_stage.xml"), viewer_root / "model" / "mhr_stage.xml")
     copy_path(Path("mjwp_inject/plugin/plugins/mhr_profile_plugin.mjs"), viewer_root / "plugins" / "mhr_profile_plugin.mjs")
     copy_path(Path("mjwp_inject/plugin/profiles/mhr"), viewer_root / "profiles" / "mhr")
-    copy_path(Path("public_assets/mhr-official") / f"lod{default_lod}", viewer_root / "mhr-official" / f"lod{default_lod}")
+    public_asset_root = Path("public_assets/mhr-official")
+    for lod in supported_lods:
+        source_dir = public_asset_root / f"lod{lod}"
+        if not source_dir.exists():
+            raise FileNotFoundError(f"Missing public runtime IR assets for lod{lod}: {source_dir}")
+        copy_path(source_dir, viewer_root / "mhr-official" / f"lod{lod}")
 
     for screenshot in SCREENSHOT_ALLOWLIST:
         copy_path(Path("assets") / screenshot, out_root / "assets" / screenshot)
@@ -676,7 +681,7 @@ def build_site(
     viewer_html = build_viewer_html(default_lod, supported_lods)
     write_text(viewer_root / "index.html", viewer_html)
     write_text(viewer_root / "mhr.html", viewer_html)
-    write_text(out_root / "index.html", build_landing_html(default_lod, viewer_path))
+    write_text(out_root / "index.html", build_landing_html(default_lod, supported_lods, viewer_path))
     write_text(out_root / ".nojekyll", "")
 
 

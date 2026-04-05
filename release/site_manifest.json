@@ -1,7 +1,7 @@
 {
   "play": {
     "repo": "https://github.com/lshdlut/mujoco-wasm-play.git",
-    "ref": "0193b54e5b072d21d99c2ab8f7bfa77a2a9d7a70",
+    "ref": "e3fd0734c74399d490fea0bf29c50af4d6e509c8",
     "ver": "3.5.0"
   },
   "forge": {
@@ -10,6 +10,6 @@
   "pages": {
     "viewerPath": "viewer",
     "defaultLod": 1,
-    "supportedLods": [1]
+    "supportedLods": [1, 2, 3, 4, 5, 6]
   }
 }

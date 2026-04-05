@@ -13,7 +13,7 @@ MHR Play is a public-facing interactive MHR experience built on top of `mujoco-w
 
 - **Full official MHR asset path**: the page loads the full official runtime IR instead of a simplified demo mesh.
 - **Play-style browser UI**: panels, HUD, camera controls, and scene interaction are hosted by `mujoco-wasm-play`.
-- **Multi-LoD support**: the local/runtime surface supports `lod0..lod6`; the public GitHub Pages build ships the embeddable `lod1` viewer.
+- **Multi-LoD support**: the local/runtime surface supports `lod0..lod6`; the public GitHub Pages build ships embeddable `lod1..lod6` viewers.
 - **Rich debugging overlays**: skeleton, joint labels, local axes, and influence-preview heatmaps are available in the viewer.
 - **Performance-oriented runtime**: the heavy-family WASM core has been optimized specifically for interactive `blend` / `expression` workloads.
 
@@ -22,6 +22,7 @@ MHR Play is a public-facing interactive MHR experience built on top of `mujoco-w
 - The portable runtime follows the optimized sparse execution path and is **not bitwise exact** to the **official full-package CPU route** (`official-full-cpu`).
 - On the current golden cases, the remaining vertex residuals stay in the low `1e-5` range, which is the same order of magnitude we observe in the **official TorchScript model route** (`official-torchscript`, `lod=1` only).
 - The official TorchScript model route is kept as a secondary reference route, not the primary public runtime.
+- The public GitHub Pages deployment intentionally excludes `lod0`; `lod1..lod6` are published there, while the heavier `lod0` bundle is reserved for larger-site hosting later.
 
 ## Gallery
 
