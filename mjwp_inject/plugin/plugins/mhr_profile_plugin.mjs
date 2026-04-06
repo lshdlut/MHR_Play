@@ -194,6 +194,19 @@ function resolveMhrAssetConfig(target = globalThis) {
   };
 }
 
+function resolveAbsoluteAssetUrl(rawUrl) {
+  return new URL(String(rawUrl || ''), globalThis.location?.href || 'http://localhost/').href;
+}
+
+function ensureTrailingSlash(rawUrl) {
+  const href = resolveAbsoluteAssetUrl(rawUrl);
+  return href.endsWith('/') ? href : `${href}/`;
+}
+
+function usesConfiguredLod(sourceLod, numericLod) {
+  return Number.isInteger(sourceLod) && sourceLod === numericLod;
+}
+
 function deriveLodPath(rawUrl, lod, { expectManifest = false } = {}) {
   const url = new URL(String(rawUrl || ''), globalThis.location?.href || 'http://localhost/');
   const nextPath = expectManifest
@@ -221,9 +234,20 @@ function buildLodAssetConfig(baseAssetConfig, lod) {
   const source = baseAssetConfig && typeof baseAssetConfig === 'object'
     ? baseAssetConfig
     : resolveMhrAssetConfig(globalThis);
+  const sourceLod = source?.lod == null || source?.lod === '' ? null : Number(source.lod);
+  const manifestUrl = usesConfiguredLod(sourceLod, numericLod)
+    ? resolveAbsoluteAssetUrl(source.manifestUrl)
+    : deriveLodPath(source.manifestUrl, numericLod, { expectManifest: true });
+  const assetBaseUrl = usesConfiguredLod(sourceLod, numericLod)
+    ? (
+      String(source.assetBaseUrl || '').trim()
+        ? ensureTrailingSlash(source.assetBaseUrl)
+        : ensureTrailingSlash(new URL('./', manifestUrl).href)
+    )
+    : deriveLodPath(source.assetBaseUrl || source.manifestUrl, numericLod);
   return {
-    manifestUrl: deriveLodPath(source.manifestUrl, numericLod, { expectManifest: true }),
-    assetBaseUrl: deriveLodPath(source.assetBaseUrl || source.manifestUrl, numericLod),
+    manifestUrl,
+    assetBaseUrl,
     lod: numericLod,
   };
 }

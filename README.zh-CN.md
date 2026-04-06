@@ -2,19 +2,18 @@
 
 [English](README.md) | 简体中文
 
+**主 viewer：** [https://lshdlut.com/en/demos/mhr-play/](https://lshdlut.com/en/demos/mhr-play/)
+
 ![MHR Play main view](assets/main.png)
 
-MHR Play 是一个面向公众展示的 Meta [Momentum Human Rig (MHR)](https://arxiv.org/abs/2511.15586) 浏览器体验页，构建在 [mujoco-wasm-play](https://github.com/lshdlut/mujoco-wasm-play) 之上。它把官方 [MHR 仓库](https://github.com/facebookresearch/MHR)、官方 MHR 资产、优化后的 WASM runtime，以及 Play 风格的 Three.js 界面整合到同一条浏览器产品线上。
-
-- 公开 viewer：[https://lshdlut.github.io/MHR_Play/](https://lshdlut.github.io/MHR_Play/)
-- 当前 GitHub Pages 只是轻量公开镜像，后续主推的托管入口会迁到 `lshdlut site`。
+MHR Play 是一个面向公众展示的 Meta [Momentum Human Rig (MHR)](https://arxiv.org/abs/2511.15586) 浏览器体验页，构建在 [mujoco-wasm-play](https://github.com/lshdlut/mujoco-wasm-play) 之上。它把官方 [MHR 仓库](https://github.com/facebookresearch/MHR)、官方 MHR 资产、优化后的 WASM runtime，以及 Play 风格的 Three.js 界面整合到同一条浏览器产品线上，同时提供一个 [GitHub Pages 镜像](https://lshdlut.github.io/MHR_Play/)。
 
 ## 亮点
 
 - **完整官方 MHR 资产链**：页面直接加载 full official runtime IR，而不是简化 demo 模型。
 - **Play 风格的交互界面**：沿用 [mujoco-wasm-play](https://github.com/lshdlut/mujoco-wasm-play) 的面板、视图控制、HUD 和 Three.js 场景。
 - **基于 mujoco-wasm-play**：它提供了我们自己的轻量 Play-hosted viewer 壳，适合浏览器优先、可嵌入的 MuJoCo 应用。
-- **多 LoD 支持**：本地/runtime 主线支持 `lod0..lod6`；公开 GitHub Pages 版本提供可嵌入的 `lod1..lod6` viewer。
+- **多 LoD 支持**：本地/runtime 主线支持 `lod0..lod6`；当前公开浏览器部署提供可嵌入的 `lod1..lod6` viewer。
 - **可视化调试能力**：支持 skeleton、joint labels、local axes、influence preview heatmap 等表达。
 - **性能导向的浏览器 runtime**：heavy family 的 core 已针对 WASM 路线做过专项优化。
 
@@ -23,7 +22,7 @@ MHR Play 是一个面向公众展示的 Meta [Momentum Human Rig (MHR)](https://
 - portable runtime 走的是优化后的 sparse 执行路径，**不是**对 **official full-package CPU route**（`official-full-cpu`）的 bitwise exact 对齐。
 - 在当前 golden cases 上，剩余的 vertex 误差维持在低 `1e-5` 量级，和 **official TorchScript model route**（`official-torchscript`，仅 `lod=1`）属于同一数量级。
 - official TorchScript model route 目前只作为次级参考路线保留，不是主 public runtime。
-- 公开 GitHub Pages 部署刻意不包含 `lod0`；当前上线的是 `lod1..lod6`，更重的 `lod0` 留给后续更大的站点托管。
+- GitHub Pages 镜像刻意不包含 `lod0`；当前上线的是 `lod1..lod6`，更重的 `lod0` 留给更大的站点托管。
 
 ## 展示
 
@@ -53,7 +52,7 @@ http://127.0.0.1:4269/mhr.html?lod=1
 
 - `mjwp_inject/`: Play 下游装配层、MHR profile/plugin、页面入口
 - `assets/`: README 与公开展示使用的截图素材
-- `public_assets/`: GitHub Pages 公共 viewer 使用的跟踪资产
+- `public_assets/`: 公共部署构建使用的跟踪 viewer 资产
 - `tools/`: 预处理、构建、bench、smoke、仓库约束检查
 - `tests/`: tooling / contract / smoke 回归
 - `native/`: portable runtime core 与 C ABI

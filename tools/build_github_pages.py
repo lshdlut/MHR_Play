@@ -546,7 +546,7 @@ def build_landing_html(default_lod: int | None, supported_lods: list[int], viewe
   <body>
     <main>
       <h1>MHR Play</h1>
-      <p>Redirecting to the public viewer for Meta's <a href="https://arxiv.org/abs/2511.15586">Momentum Human Rig (MHR)</a>.</p>
+      <p>Redirecting to the viewer for Meta's <a href="https://arxiv.org/abs/2511.15586">Momentum Human Rig (MHR)</a>.</p>
       <p>If the redirect does not happen, open <a href="{default_link}">the viewer</a>.</p>
     </main>
   </body>
